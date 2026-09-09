@@ -1,7 +1,8 @@
 # 사내 이름 공모전 투표 시스템
 
 로그인·코드 없이 **링크만 열면 바로 투표**하는 독립형 사이트입니다 (구글폼과 비슷).
-외부 DB·외부 계정 없이 Node.js 하나로 동작하고, 투표 기록은 `DATA_DIR/db.json` 파일 하나에 저장됩니다.
+Node.js 하나로 동작하며, 투표 기록은 로컬 JSON 파일(`DATA_DIR/db.json`) 또는
+Upstash Redis(무료) 중 하나에 저장됩니다 — 배포 환경에 맞게 고릅니다 ([DEPLOY.md](DEPLOY.md)).
 
 ## 구성
 
@@ -44,24 +45,24 @@ npm start
 
 > 클릭 단위 상세 절차는 **[DEPLOY.md](DEPLOY.md)** 참고. 요약:
 
-투표 기록 파일(`db.json`)이 유지되도록 **재시작해도 파일이 남는(영구 디스크)** 호스팅을 쓰세요.
-무료 티어(예: Render Free)는 일정 시간 미접속 시 잠들며 깨어날 때 파일이 초기화되어 투표가 사라질 수 있으니 주의.
-
-- **Render (유료 Starter)** — `render.yaml` 포함. New → Blueprint 로 한 번에 배포. [DEPLOY.md](DEPLOY.md) 방법 A.
-- **Fly.io (무료 한도)** — 볼륨 1개로 파일 유지. [DEPLOY.md](DEPLOY.md) 방법 B.
-- **VPS / 사내 서버** — `Dockerfile` 포함. `docker run -p 3000:3000 -e ADMIN_PASSWORD=... -v $PWD/data:/app/data <image>` 또는 `pm2 start server.js` + Nginx(HTTPS).
+- **Render(무료) + Upstash Redis(무료)** ★추천 — 둘 다 카드 등록 없이 무료. 투표 기록은 Upstash 에 저장되어 서버가 잠들어도 보존됩니다. [DEPLOY.md](DEPLOY.md) 방법 A.
+- **Render 유료(Starter)** — Upstash 없이 영구 디스크만으로. 월 $7. [DEPLOY.md](DEPLOY.md) 방법 B.
+- **Fly.io / VPS / 사내 서버** — [DEPLOY.md](DEPLOY.md) 방법 C·D. `Dockerfile` 포함.
 
 ### 환경변수
 
-| 변수             | 기본값      | 설명                                           |
-| ---------------- | ----------- | -------------------------------------------- |
-| `ADMIN_PASSWORD` | `admin1234` | 관리자 페이지 비밀번호. **배포 전 반드시 변경** |
-| `PORT`           | `3000`      | 서버 포트 (호스팅이 자동 주입하면 그대로 사용)  |
-| `DATA_DIR`       | `./data`    | `db.json` 저장 폴더. 영구 디스크 경로로 지정    |
+| 변수                       | 기본값      | 설명                                                          |
+| -------------------------- | ----------- | --------------------------------------------------------- |
+| `ADMIN_PASSWORD`           | `admin1234` | 관리자 페이지 비밀번호. **배포 전 반드시 변경**              |
+| `UPSTASH_REDIS_REST_URL`   | (없음)      | 있으면 투표 기록을 Upstash Redis 에 저장 (없으면 로컬 파일)  |
+| `UPSTASH_REDIS_REST_TOKEN` | (없음)      | 위와 한 쌍                                                  |
+| `PORT`                     | `3000`      | 서버 포트 (호스팅이 자동 주입하면 그대로 사용)               |
+| `DATA_DIR`                 | `./data`    | 파일 저장 시 `db.json` 폴더 (Upstash 사용 시 무시)          |
 
 ## 데이터 백업
 
-`DATA_DIR/db.json` 파일 하나가 전부입니다. 투표 종료 후 이 파일을 복사해 두면 기록이 보존됩니다.
+파일 저장이면 `DATA_DIR/db.json` 하나, Upstash 면 `name-contest-vote:db` 키 하나가 전부입니다.
+투표 종료 후 관리자 `결과 · 집계` 화면을 캡처해 두거나 위 값을 복사해 두면 기록이 보존됩니다.
 
 ## 참고 / 한계
 

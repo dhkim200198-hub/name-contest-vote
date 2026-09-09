@@ -1,72 +1,91 @@
 # 배포 가이드
 
-투표 기록은 `DATA_DIR/db.json` 파일 하나에 저장됩니다. 따라서 **재시작해도 파일이 유지되는(영구 디스크) 환경**이어야 표가 안 사라집니다.
+투표 기록은 JSON 한 덩어리로 저장됩니다. 무료 호스팅은 대부분 "일정 시간 놀면 잠들고
+깨어날 때 파일이 초기화"되므로, 무료로 하려면 **기록을 Upstash(무료 Redis)에 두고**
+호스팅은 잠들어도 되게 만듭니다.
 
 ---
 
-## 방법 A — Render (유료 Starter, 가장 간단)
+## 방법 A — Render(무료) + Upstash Redis(무료)  ★ 추천, 카드 등록 불필요
 
-월 $7 (Starter) + 디스크 1GB(약 $0.25). 공모전이 끝나면 서비스를 삭제하면 과금이 멈춥니다.
-100만원 상금 공모전 기준으로는 며칠치 몇 천 원 수준입니다.
+### 1) Upstash 무료 데이터베이스 만들기
 
-1. https://render.com 접속 → **GitHub 계정으로 로그인** (무료 가입, 카드 없이 시작).
-2. 처음이면 GitHub 연동 화면에서 `dhkim200198-hub/name-contest-vote` 저장소 접근을 허용.
-3. 대시보드에서 **New +** → **Blueprint**.
-4. `name-contest-vote` 저장소 선택 → Render가 `render.yaml` 을 자동으로 읽음 → **Apply**.
-5. 배포가 시작되면 서비스 이름을 눌러 들어가서 **Environment** 탭 →
-   `ADMIN_PASSWORD` 값에 **관리자 비밀번호**를 입력하고 저장 (자동 재배포됨).
-6. 상단의 `https://name-contest-vote-xxxx.onrender.com` 주소가 완성된 사이트입니다.
+1. https://upstash.com → **Sign up** (GitHub / Google 계정, 카드 없음).
+2. **Create Database** → 이름 아무거나, Region 은 `AWS / ap-northeast-1 (Tokyo)` 정도 → Create.
+3. 데이터베이스 상세 화면 아래 **REST API** 섹션에서 두 값을 복사해 둡니다:
+   - `UPSTASH_REDIS_REST_URL` (예: `https://xxxx.upstash.io`)
+   - `UPSTASH_REDIS_REST_TOKEN` (긴 문자열)
+
+### 2) Render 에 배포
+
+1. https://render.com → **GitHub 계정으로 로그인** (무료, 카드 없음).
+2. 저장소 접근 허용 화면에서 `dhkim200198-hub/name-contest-vote` 선택.
+3. 대시보드 → **New +** → **Blueprint** → `name-contest-vote` 선택 → Render 가
+   `render.yaml` 을 읽음 → **Apply**. (플랜은 Free 그대로 두면 됩니다.)
+4. 서비스로 들어가 **Environment** 탭에서 값 3개를 입력하고 저장 (자동 재배포):
+   | Key | Value |
+   | --- | --- |
+   | `ADMIN_PASSWORD` | 관리자 비밀번호 |
+   | `UPSTASH_REDIS_REST_URL` | 1)에서 복사한 URL |
+   | `UPSTASH_REDIS_REST_TOKEN` | 1)에서 복사한 TOKEN |
+5. 상단 `https://name-contest-vote-xxxx.onrender.com` 이 완성된 주소입니다.
    - 투표: `그 주소/`
    - 관리자: `그 주소/admin`
    - 결과: `그 주소/results`
 
-> Blueprint 화면에서 플랜이 Free 로 보이면 Starter 로 바꿔야 디스크가 생성됩니다.
-> 디스크 없이 Free 로 올리면 사이트는 뜨지만 재시작 시 투표가 초기화됩니다.
+### 참고
 
-### 끝난 뒤
-
-Render 대시보드 → 서비스 → Settings → 맨 아래 **Delete Service**. 그 전에 관리자
-`결과 · 집계` 화면을 캡처하거나, 필요하면 Shell 로 `db.json` 을 내려받아 보관하세요.
+- 로그(Logs 탭)에 `[store] 저장소: Upstash Redis ...` 가 보이면 정상입니다.
+  `[store] 저장소: /opt/...` 로 보이면 Upstash 값이 잘못 들어간 것이니 다시 확인하세요.
+- 무료 Render 는 15분간 접속이 없으면 잠듭니다. 다음 접속 시 30~60초 깨어나는 시간이
+  걸리지만, 기록은 Upstash 에 있으므로 **표는 사라지지 않습니다.**
+- Upstash 무료 한도(하루 만 건 명령)는 이 투표 규모에서 전혀 문제되지 않습니다
+  (투표 1건 = 쓰기 1회, 화면 조회는 서버 메모리에서 처리되어 Upstash 를 안 씀).
+- 공모전이 끝나면 Render 서비스와 Upstash DB 를 삭제하면 됩니다. 둘 다 무료라 안 지워도 요금은 없습니다.
 
 ---
 
-## 방법 B — Fly.io (무료 한도 내, 설정 몇 단계 더)
+## 방법 B — Render 유료(Starter) 한 방
 
-Fly.io 무료 허용량으로 작은 앱 + 작은 볼륨을 커버할 수 있습니다. 카드 등록을 요구할 수 있습니다.
+Upstash 없이 Render 영구 디스크만으로. 월 $7 (+디스크 약 $0.25). `render.yaml` 에서
+`plan: free` 를 `plan: starter` 로 바꾸고 아래 `disk` 블록을 추가:
+
+```yaml
+    plan: starter
+    disk:
+      name: vote-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: DATA_DIR
+        value: /var/data
+```
+
+---
+
+## 방법 C — Fly.io (무료 한도, 가입 시 카드 필요)
 
 ```bash
-# 1. flyctl 설치 (PowerShell)
-iwr https://fly.io/install.ps1 -useb | iex
-
-# 2. 로그인 (브라우저 열림)
+iwr https://fly.io/install.ps1 -useb | iex        # flyctl 설치 (PowerShell)
 fly auth login
-
-# 3. 이 폴더에서 앱 생성 (배포는 잠시 미룸)
 cd "C:\agent 2\name-contest-vote"
 fly launch --no-deploy --name name-contest-vote --region nrt
-
-# 4. 투표 기록용 볼륨 1GB 생성
 fly volumes create vote_data --size 1 --region nrt
-
-# 5. fly.toml 에 아래를 추가
+# fly.toml 에 추가:
 #   [mounts]
 #     source = "vote_data"
 #     destination = "/data"
 #   [env]
 #     DATA_DIR = "/data"
-
-# 6. 관리자 비밀번호를 시크릿으로 등록
 fly secrets set ADMIN_PASSWORD=원하는비밀번호
-
-# 7. 배포
 fly deploy
 ```
 
-배포 후 `https://name-contest-vote.fly.dev` 가 주소입니다.
+주소: `https://name-contest-vote.fly.dev`
 
 ---
 
-## 방법 C — 사내 서버 / VPS 직접 실행
+## 방법 D — 사내 서버 / VPS 직접 실행
 
 ```bash
 git clone https://github.com/dhkim200198-hub/name-contest-vote.git
@@ -78,8 +97,8 @@ ADMIN_PASSWORD=원하는비밀번호 DATA_DIR=/srv/vote-data node server.js
 
 ---
 
-## 공통 확인
+## 공통
 
-- `ADMIN_PASSWORD` 를 반드시 설정했는지 (미설정 시 `admin1234` 로 동작하며 로그에 경고).
+- `ADMIN_PASSWORD` 를 반드시 설정 (미설정 시 `admin1234` 로 동작하며 로그에 경고).
 - HTTPS 는 호스팅(또는 앞단 Nginx)이 처리한다고 가정합니다.
-- 백업이 필요하면 `DATA_DIR/db.json` 파일 하나만 복사하면 됩니다.
+- 백업: 관리자 `결과 · 집계` 화면 캡처, 또는 Upstash 콘솔에서 `name-contest-vote:db` 키 값 복사.

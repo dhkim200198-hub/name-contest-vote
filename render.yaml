@@ -1,0 +1,17 @@
+# Render.com 배포용 설정. 저장소를 Render에 연결하고 "Blueprint" 로 이 파일을 선택하세요.
+services:
+  - type: web
+    name: name-contest-vote
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: ADMIN_PASSWORD
+        sync: false # 배포 후 Render 대시보드에서 값 입력
+      - key: DATA_DIR
+        value: /var/data
+    disk:
+      name: vote-data
+      mountPath: /var/data # 투표 기록 영구 보관 (무료 플랜도 1GB 제공)
+      sizeGB: 1

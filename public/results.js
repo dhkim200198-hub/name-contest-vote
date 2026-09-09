@@ -57,7 +57,8 @@ function roundTable(section) {
 
 function render(r) {
   document.getElementById('title').textContent = `${r.title} · 결과`;
-  const sw = r.scoreWeights || { round1: 1, round2: 1 };
+  const cr = r.combineRatio || { round1: 1, round2: 1 };
+  const ratioTxt = cr.round1 === cr.round2 ? '1 : 1 (동일)' : `${cr.round1} : ${cr.round2}`;
   let html = `<p class="muted">현재 단계: <b>${PHASE_LABEL[r.phase] || r.phase}</b></p>`;
 
   if (r.winner && r.phase === 'done') {
@@ -73,10 +74,10 @@ function render(r) {
 
   html += `<div class="card">
     <h2>종합 순위 (1차 + 2차)</h2>
-    <p class="hint">최종 점수 = (1차 점수 × ${sw.round1}) + (2차 점수 × ${sw.round2})</p>
+    <p class="hint">각 라운드를 <b>100점 만점으로 환산</b>한 뒤 <b>${ratioTxt}</b> 비율로 합산합니다. (아래 1·2차 표의 "점수"는 환산 전 원점수)</p>
     <div class="table-scroll mt">
       <table class="data">
-        <thead><tr><th>순위</th><th>이름</th><th>영문</th><th class="num">1차</th><th class="num">2차</th><th class="num">종합</th></tr></thead>
+        <thead><tr><th>순위</th><th>이름</th><th>영문</th><th class="num">1차(환산)</th><th class="num">2차(환산)</th><th class="num">종합</th></tr></thead>
         <tbody>${r.combined
           .map(
             (x) => `<tr class="${x.rank === 1 ? 'top1' : ''}">

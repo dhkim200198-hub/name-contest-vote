@@ -136,21 +136,29 @@ function buildResults(d) {
   const label = (x) => ({ ...x, name: cand(x.id).name || x.id, english: cand(x.id).english || '' });
   const votableIds = votableCandidates(d).map((c) => c.id);
 
-  const w1 = Number(cfg.round1.scoreWeight) || 1;
-  const w2 = Number(cfg.round2.scoreWeight) || 1;
+  // 종합 반영 비율 (기본 1 : 1). 각 라운드를 100점 만점으로 환산한 뒤 이 비율로 합산한다.
+  const w1 = Number(cfg.round1.scoreWeight) >= 0 ? Number(cfg.round1.scoreWeight) : 1;
+  const w2 = Number(cfg.round2.scoreWeight) >= 0 ? Number(cfg.round2.scoreWeight) : 1;
   const r1 = tallyRound1(d.ballots.round1, votableIds);
   const r2 = tallyRound2(d.ballots.round2, cfg.round2.points, votableIds);
+
+  const r1Total = r1.rows.reduce((s, x) => s + x.score, 0) || 1; // 0 방지
+  const r2Total = r2.rows.reduce((s, x) => s + x.score, 0) || 1;
 
   const s1 = Object.fromEntries(r1.rows.map((x) => [x.id, x]));
   const s2 = Object.fromEntries(r2.rows.map((x) => [x.id, x]));
   let combined = votableIds.map((id) => {
     const a = s1[id] || { score: 0, firsts: 0 };
     const b = s2[id] || { score: 0, firsts: 0 };
+    const n1 = (a.score / r1Total) * 100 * w1; // 1차 환산 기여도 (라운드 총합 100×w1점)
+    const n2 = (b.score / r2Total) * 100 * w2; // 2차 환산 기여도
     return {
       id,
-      round1Score: a.score,
-      round2Score: b.score,
-      score: a.score * w1 + b.score * w2,
+      round1Score: n1,
+      round2Score: n2,
+      round1Raw: a.score,
+      round2Raw: b.score,
+      score: n1 + n2,
       firsts: a.firsts + b.firsts,
     };
   });
@@ -174,7 +182,7 @@ function buildResults(d) {
     subtitle: cfg.subtitle,
     prize: cfg.prize,
     expectedVoters: expected,
-    scoreWeights: { round1: w1, round2: w2 },
+    combineRatio: { round1: w1, round2: w2 }, // 각 라운드 100점 환산 후 이 비율로 합산
     round1: {
       tokenBudget: cfg.round1.tokenBudget,
       maxPicks: cfg.round1.maxPicks,

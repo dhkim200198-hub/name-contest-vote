@@ -183,21 +183,19 @@ function renderSettings(root) {
       <label class="field"><span>2차 순위별 점수 (쉼표 구분 · 개수 = 선택 가능 수)</span>
         <input type="text" id="p2" value="${c.round2.points.join(', ')}" /></label>
       <div class="grid-2">
-        <label class="field"><span>종합 점수에 1차 반영 배율</span>
-          <input type="number" id="sw1" value="${c.round1.scoreWeight ?? 1}" min="0" step="0.1" /></label>
-        <label class="field"><span>종합 점수에 2차 반영 배율</span>
-          <input type="number" id="sw2" value="${c.round2.scoreWeight ?? 1}" min="0" step="0.1" /></label>
+        <label class="field"><span>종합 반영 비율 — 1차</span>
+          <input type="number" id="sw1" value="${c.round1.scoreWeight ?? 1}" min="0" step="0.5" /></label>
+        <label class="field"><span>종합 반영 비율 — 2차</span>
+          <input type="number" id="sw2" value="${c.round2.scoreWeight ?? 1}" min="0" step="0.5" /></label>
       </div>
       <button class="btn-primary" id="saveVote">방식 저장</button>
       <p class="hint mt">
         1차·2차 모두 이름 전체를 대상으로 투표합니다.
         <b>1차</b>: 토큰 ${c.round1.tokenBudget ?? 100}점을 최대 ${c.round1.maxPicks ?? 5}개 이름에 0~${c.round1.tokenBudget ?? 100}점 자유 배분(합계 = 토큰).
-        <b>2차</b>: 순위별 고정 점수.
-        <b>최종 순위 = (1차 점수 × 1차 배율) + (2차 점수 × 2차 배율)</b>.<br />
-        ※ 1차 총점(${c.round1.tokenBudget ?? 100})이 2차보다 크므로, 두 라운드를 대등하게 보려면 1차 배율을 낮추세요
-        (예: 2차 최대 ${c.round2.points.slice(0, c.round1.maxPicks ?? 5).reduce((a, b) => a + b, 0)}점 → 1차 배율 ≈ ${(
-          c.round2.points.slice(0, c.round1.maxPicks ?? 5).reduce((a, b) => a + b, 0) / (c.round1.tokenBudget ?? 100)
-        ).toFixed(2)}).
+        <b>2차</b>: 순위별 고정 점수.<br />
+        <b>종합</b>: 각 라운드를 <b>100점 만점으로 환산</b>한 뒤 위 비율로 합산합니다.
+        <b>1 : 1 이면 두 투표가 정확히 같은 무게</b>로 반영됩니다 (원점수 크기 차이는 자동 보정).
+        2차를 더 중시하려면 예: 1차 1 / 2차 2.
       </p>
     </div>
 
@@ -379,12 +377,13 @@ function scoreTable(section, extraHead = '', extraCell = () => '') {
 
 function renderResults(root) {
   const r = D.results;
-  const sw = r.scoreWeights || { round1: 1, round2: 1 };
+  const cr = r.combineRatio || { round1: 1, round2: 1 };
+  const ratioTxt = cr.round1 === cr.round2 ? '1 : 1 (동일 무게)' : `1차 ${cr.round1} : 2차 ${cr.round2}`;
 
   root.innerHTML = `
     <div class="card">
       <h2>종합 집계 (1차 + 2차)</h2>
-      <p class="hint">최종 순위 = (1차 점수 × ${sw.round1}) + (2차 점수 × ${sw.round2}). 배율은 <b>설정</b> 탭에서 조정합니다.</p>
+      <p class="hint">각 라운드를 100점 만점으로 환산 후 <b>${ratioTxt}</b> 비율로 합산. 비율은 <b>설정</b> 탭에서 조정합니다. (아래 열은 환산값)</p>
       ${
         r.winner && r.combined.some((x) => x.score > 0)
           ? `<div class="prize mt">🏆 <span>현재 1위: <b>${esc(r.winner.name)}</b>${
@@ -394,7 +393,7 @@ function renderResults(root) {
       }
       <div class="table-scroll mt">
         <table class="data"><thead><tr><th>순위</th><th>이름</th><th>영문</th>
-          <th class="num">1차</th><th class="num">2차</th><th class="num">종합</th></tr></thead>
+          <th class="num">1차(환산)</th><th class="num">2차(환산)</th><th class="num">종합</th></tr></thead>
         <tbody>${r.combined
           .map(
             (x) => `<tr class="${x.rank === 1 ? 'top1' : ''}"><td class="num">${x.rank}</td>

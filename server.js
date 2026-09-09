@@ -215,6 +215,7 @@ app.get('/api/state', (req, res) => {
     phase: cfg.phase,
     resultsPublic: cfg.resultsPublic,
     expectedVoters: Number(cfg.expectedVoters) || 0,
+    useVoterNumbers: !!cfg.useVoterNumbers && (Number(cfg.expectedVoters) || 0) >= 1,
     activeRound: round,
   };
   if (round) {
@@ -225,45 +226,81 @@ app.get('/api/state', (req, res) => {
   res.json(out);
 });
 
+function numberMode(d) {
+  return !!d.config.useVoterNumbers && (Number(d.config.expectedVoters) || 0) >= 1;
+}
+// 번호 방식일 때: 요청의 voterNumber 검증 → { n } 또는 { error }
+function checkVoterNumber(d, round, raw) {
+  const max = Number(d.config.expectedVoters) || 0;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1 || n > max) return { error: `본인 번호(1~${max})를 정확히 입력하세요.` };
+  if (ballotList(d, round).some((b) => b.voterNumber === n)) {
+    return { error: `${n}번은 이미 이 라운드 투표를 완료했습니다.` };
+  }
+  return { n };
+}
+
+// 번호 방식: 투표 시작 전 본인 번호가 유효/미사용인지 확인
+app.post('/api/vote/check', (req, res) => {
+  const d = store.getData();
+  const round = roundOf(d.config.phase);
+  if (!round) return res.status(409).json({ error: '지금은 진행 중인 투표가 없습니다.' });
+  if (seatsFull(d, round)) return res.status(409).json({ error: '예정된 투표 인원이 모두 참여하여 마감되었습니다.' });
+  if (!numberMode(d)) return res.json({ ok: true }); // 번호 안 쓰면 통과
+  const chk = checkVoterNumber(d, round, req.body?.voterNumber);
+  if (chk.error) return res.status(409).json({ error: chk.error });
+  res.json({ ok: true });
+});
+
 app.post('/api/vote/submit', (req, res) => {
   const d = store.getData();
   const round = roundOf(d.config.phase);
   if (!round) return res.status(409).json({ error: '지금은 진행 중인 투표가 없습니다.' });
 
-  const voterKey = String(req.body?.voterKey || '').slice(0, 64);
-  if (!voterKey) return res.status(400).json({ error: '잘못된 요청입니다. 페이지를 새로고침해 주세요.' });
-
   if (seatsFull(d, round)) {
     return res.status(409).json({ error: '예정된 투표 인원이 모두 참여하여 마감되었습니다.' });
   }
-  if (ballotList(d, round).some((b) => b.voterKey === voterKey)) {
-    return res.status(409).json({ error: '이 기기에서는 이미 투표를 완료했습니다.' });
+
+  const voterKey = String(req.body?.voterKey || '').slice(0, 64); // 부가 정보(디버깅용)
+  const useNum = numberMode(d);
+  let voterNumber = null;
+  if (useNum) {
+    const chk = checkVoterNumber(d, round, req.body?.voterNumber);
+    if (chk.error) return res.status(409).json({ error: chk.error });
+    voterNumber = chk.n;
+  } else {
+    if (!voterKey) return res.status(400).json({ error: '잘못된 요청입니다. 페이지를 새로고침해 주세요.' });
+    if (ballotList(d, round).some((b) => b.voterKey === voterKey)) {
+      return res.status(409).json({ error: '이 기기에서는 이미 투표를 완료했습니다.' });
+    }
   }
 
   const allowedIds = votableCandidates(d).map((c) => c.id);
   const info = ballotInfo(d, round);
+  const base = { voterNumber, voterKey, at: new Date().toISOString() };
   let entry;
   if (round === 1) {
     const allocations = (req.body?.allocations || []).map((a) => ({ id: a && a.id, points: Number(a && a.points) }));
     const err = validateAllocations(allocations, allowedIds, info.maxPick, d.config.round1.tokenBudget);
     if (err) return res.status(400).json({ error: err });
-    entry = { voterKey, allocations, at: new Date().toISOString() };
+    entry = { ...base, allocations };
   } else {
     const ranking = req.body?.ranking;
     const err = validateRanking(ranking, allowedIds, info.maxPick);
     if (err) return res.status(400).json({ error: err });
-    entry = { voterKey, ranking, at: new Date().toISOString() };
+    entry = { ...base, ranking };
   }
 
   let stored = false;
   store.mutate((data) => {
     const list = ballotList(data, round);
     if (seatsFull(data, round)) return;
-    if (list.some((b) => b.voterKey === voterKey)) return;
+    if (useNum && list.some((b) => b.voterNumber === voterNumber)) return;
+    if (!useNum && list.some((b) => b.voterKey === voterKey)) return;
     list.push(entry);
     stored = true;
   });
-  if (!stored) return res.status(409).json({ error: '방금 마감되었거나 이미 투표하셨습니다.' });
+  if (!stored) return res.status(409).json({ error: '방금 마감되었거나 이미 투표되었습니다.' });
 
   res.json({ ok: true, count: ballotList(store.getData(), round).length });
 });
@@ -296,10 +333,16 @@ app.post('/api/admin/login', (req, res) => {
 
 app.get('/api/admin/data', requireAdmin, (req, res) => {
   const d = store.getData();
+  const nums = (list) =>
+    list
+      .map((b) => b.voterNumber)
+      .filter((n) => Number.isInteger(n))
+      .sort((a, b) => a - b);
   res.json({
     config: d.config,
     candidates: d.candidates,
     ballotCounts: { round1: d.ballots.round1.length, round2: d.ballots.round2.length },
+    votedNumbers: { round1: nums(d.ballots.round1), round2: nums(d.ballots.round2) },
     results: buildResults(d),
   });
 });
@@ -312,6 +355,7 @@ app.put('/api/admin/config', requireAdmin, (req, res) => {
     if (typeof b.subtitle === 'string') c.subtitle = b.subtitle.slice(0, 200);
     if (Number.isFinite(b.prize) && b.prize >= 0) c.prize = Math.round(b.prize);
     if (typeof b.resultsPublic === 'boolean') c.resultsPublic = b.resultsPublic;
+    if (typeof b.useVoterNumbers === 'boolean') c.useVoterNumbers = b.useVoterNumbers;
     if (Number.isFinite(b.expectedVoters) && b.expectedVoters >= 0) {
       c.expectedVoters = Math.min(100000, Math.round(b.expectedVoters));
     }

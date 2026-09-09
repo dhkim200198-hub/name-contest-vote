@@ -39,6 +39,7 @@ function hasVoted(round) {
 let st = null;
 let picked = []; // 선택된 이름 id (선택/순위 순서)
 let alloc = {}; // 1차 전용: id -> 배분 점수
+let myNumber = null; // 번호 방식일 때 확인된 본인 번호
 
 init();
 
@@ -53,13 +54,55 @@ async function init() {
     }
     if (!st.activeRound) return renderClosed(st.phase);
     if (st.full) return renderFull(st.activeRound);
-    if (hasVoted(st.activeRound)) return renderAlready(st.activeRound);
     picked = [];
     alloc = {};
+    if (st.useVoterNumbers) {
+      myNumber = null;
+      return renderNumberEntry();
+    }
+    if (hasVoted(st.activeRound)) return renderAlready(st.activeRound);
     renderBallot();
   } catch (e) {
     view.innerHTML = `<div class="notice err">${esc(e.message)}</div>`;
   }
+}
+
+function renderNumberEntry() {
+  const max = st.expectedVoters;
+  view.innerHTML = `
+    <div class="card">
+      <h2>${st.activeRound}차 투표 · 본인 번호 입력</h2>
+      <p class="hint">배정받은 <b>본인 번호(1 ~ ${max})</b>를 입력하세요. 번호 하나당 한 번만 투표할 수 있습니다.
+        (현재 ${st.count} / ${max}명 참여)</p>
+      <label class="field">
+        <span>내 번호</span>
+        <input type="number" id="vnum" min="1" max="${max}" inputmode="numeric" class="code-input" placeholder="0" />
+      </label>
+      <div id="numErr"></div>
+      <button class="btn-primary btn-lg btn-block" id="numGo">다음</button>
+    </div>`;
+  const input = document.getElementById('vnum');
+  const go = async () => {
+    const n = Number(input.value);
+    const errBox = document.getElementById('numErr');
+    if (!Number.isInteger(n) || n < 1 || n > max) {
+      errBox.innerHTML = `<div class="notice err">1 ~ ${max} 사이 번호를 입력하세요.</div>`;
+      return;
+    }
+    document.getElementById('numGo').disabled = true;
+    errBox.innerHTML = '';
+    try {
+      await api('/api/vote/check', { body: { voterNumber: n } });
+      myNumber = n;
+      renderBallot();
+    } catch (e) {
+      errBox.innerHTML = `<div class="notice err">${esc(e.message)}</div>`;
+      document.getElementById('numGo').disabled = false;
+    }
+  };
+  input.addEventListener('keydown', (e) => e.key === 'Enter' && go());
+  document.getElementById('numGo').addEventListener('click', go);
+  input.focus();
 }
 
 function renderClosed(phase) {
@@ -105,17 +148,30 @@ function renderBallot() {
        순위에 따라 <b>${b.points.slice(0, b.maxPick).join(' · ')}점</b>이 부여되며, <b>1차 점수와 합산</b>해 최종 순위를 냅니다.
        <br />원하는 만큼만 골라도 됩니다.`;
 
+  const who = myNumber
+    ? `<span class="tag">내 번호 ${myNumber}번</span> <a href="#" id="reNum" style="font-size:.85rem">번호 다시 입력</a>`
+    : '';
   view.innerHTML = `
     <div class="card">
       <h2>${b.round}차 투표 &nbsp;${seat}</h2>
+      ${who ? `<p style="margin:0 0 8px">${who}</p>` : ''}
       <p class="hint">${hint}</p>
       <div id="rankPanel"></div>
       <div id="candList"></div>
       <div id="submitErr" class="mt"></div>
       <button class="btn-primary btn-lg btn-block mt" id="submit">제출하기</button>
-      <p class="hint" style="margin-top:12px">제출 후에는 수정할 수 없습니다. 이 기기로는 한 번만 투표할 수 있습니다.</p>
+      <p class="hint" style="margin-top:12px">제출 후에는 수정할 수 없습니다. ${
+        myNumber ? `${myNumber}번으로 한 번만 투표됩니다.` : '이 기기로는 한 번만 투표할 수 있습니다.'
+      }</p>
     </div>`;
   document.getElementById('submit').addEventListener('click', confirmSubmit);
+  document.getElementById('reNum')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    picked = [];
+    alloc = {};
+    myNumber = null;
+    renderNumberEntry();
+  });
   paint();
 }
 
@@ -267,7 +323,8 @@ function confirmSubmit() {
   } else {
     summary = picked.map((id, i) => `${i + 1}순위: ${byId[id].name} (${r2Points(i)}점)`).join('\n');
   }
-  if (!window.confirm(`아래 내용으로 제출합니다.\n\n${summary}\n\n제출 후에는 수정할 수 없습니다.`)) return;
+  const head = myNumber ? `${myNumber}번으로 제출합니다.\n\n` : '';
+  if (!window.confirm(`${head}${summary}\n\n제출 후에는 수정할 수 없습니다.`)) return;
   submit();
 }
 
@@ -276,12 +333,13 @@ async function submit() {
   const err = document.getElementById('submitErr');
   btn.disabled = true;
   err.innerHTML = '';
-  const body = isR1()
-    ? { allocations: picked.map((id) => ({ id, points: Number(alloc[id]) || 0 })), voterKey: voterKey() }
-    : { ranking: picked, voterKey: voterKey() };
+  const body = { voterKey: voterKey() };
+  if (myNumber) body.voterNumber = myNumber;
+  if (isR1()) body.allocations = picked.map((id) => ({ id, points: Number(alloc[id]) || 0 }));
+  else body.ranking = picked;
   try {
     await api('/api/vote/submit', { body });
-    markVoted(st.ballot.round);
+    if (!myNumber) markVoted(st.ballot.round);
     renderDone();
   } catch (e) {
     err.innerHTML = `<div class="notice err">${esc(e.message)}</div>`;
@@ -300,7 +358,7 @@ function renderDone() {
   view.innerHTML = `
     <div class="card">
       <h2>✅ 투표가 완료되었습니다</h2>
-      <p class="hint">소중한 한 표 감사합니다. 이 기기에서는 다시 투표할 수 없습니다.</p>
+      <p class="hint">소중한 한 표 감사합니다. ${myNumber ? `${myNumber}번은 다시 투표할 수 없습니다.` : '이 기기에서는 다시 투표할 수 없습니다.'}</p>
       <div class="rankpanel"><b>제출한 내용</b><ol>${rows.join('')}</ol></div>
       <p class="hint mt">최종 선정된 이름에는 상금이 수여됩니다. 결과는 <a href="/results">결과 페이지</a>에서 공개됩니다.</p>
     </div>`;

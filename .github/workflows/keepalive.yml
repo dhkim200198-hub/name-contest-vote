@@ -1,0 +1,24 @@
+# Render 무료 플랜은 15분간 요청이 없으면 잠듭니다(깨어나는 데 30~60초).
+# 이 워크플로가 약 10분마다 사이트를 한 번씩 찔러 계속 깨어 있게 합니다.
+# 공모전이 끝나면 GitHub 저장소 → Actions 탭 → "keep-alive" → 우측 "..." → Disable workflow 로 꺼도 됩니다.
+name: keep-alive
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping site
+        run: |
+          URL="https://name-contest-vote.onrender.com/api/state"
+          for i in 1 2 3 4; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 120 "$URL" || echo 000)
+            echo "attempt $i -> HTTP $code"
+            [ "$code" = "200" ] && exit 0
+            sleep 20
+          done
+          echo "site did not respond 200 after retries"
+          exit 1

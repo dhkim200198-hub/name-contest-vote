@@ -138,7 +138,7 @@ function renderSettings(root) {
       <div id="phaseErr" class="mt"></div>
       <div class="grid-2 mt">
         <label class="field">
-          <span>예상 투표 인원 (이 수에 도달하면 자동 마감 · 0 = 무제한)</span>
+          <span>투표 인원 (번호 방식이면 1~이 수 · 도달 시 자동 마감 · 0 = 무제한)</span>
           <div class="btn-row">
             <input type="number" id="expected" value="${c.expectedVoters ?? 19}" min="0" max="100000" style="width:110px" />
             <button id="saveExpected">적용</button>
@@ -152,7 +152,19 @@ function renderSettings(root) {
           </select>
         </label>
       </div>
-      <p class="hint">투표는 로그인·코드 없이 링크만 열면 됩니다. 같은 기기에서 재투표는 막지만(브라우저 저장), 방문자가 브라우저 데이터를 지우면 다시 투표할 수 있습니다. 링크는 사내에만 공유하세요.</p>
+      <label class="field" style="max-width:420px">
+        <span>투표 참여 방식</span>
+        <select id="voterMode">
+          <option value="number" ${c.useVoterNumbers ? 'selected' : ''}>본인 번호 입력 (1 ~ ${c.expectedVoters ?? 19})</option>
+          <option value="open" ${!c.useVoterNumbers ? 'selected' : ''}>번호 없이 (링크만 · 브라우저 기준 중복 방지)</option>
+        </select>
+      </label>
+      <p class="hint">
+        <b>번호 방식</b>: 투표자가 배정받은 번호를 입력하고 시작. 번호당 1회만 가능하고 브라우저 데이터와 무관합니다.
+        각자에게 1~${c.expectedVoters ?? 19}번을 나눠 주세요(사원 명단 순서 등). 아래 "결과·집계" 탭에서 투표한 번호를 볼 수 있습니다.<br />
+        <b>번호 없이</b>: 링크만 열면 바로 투표. 같은 브라우저 재투표만 막습니다.
+        어느 쪽이든 링크는 사내에만 공유하세요.
+      </p>
     </div>
 
     <div class="card">
@@ -232,7 +244,16 @@ function renderSettings(root) {
       body: { expectedVoters: Number(document.getElementById('expected').value) },
     });
     await refresh();
-    toast('예상 투표 인원을 저장했습니다.');
+    toast('투표 인원을 저장했습니다.');
+  });
+
+  document.getElementById('voterMode').addEventListener('change', async (e) => {
+    await authed('/api/admin/config', {
+      method: 'PUT',
+      body: { useVoterNumbers: e.target.value === 'number' },
+    });
+    await refresh();
+    toast('투표 참여 방식을 저장했습니다.');
   });
 
   document.getElementById('saveInfo').addEventListener('click', async () => {
@@ -405,9 +426,29 @@ function renderResults(root) {
       </div>
     </div>
 
+    ${D.config.useVoterNumbers && D.config.expectedVoters >= 1 ? voterNumberCard() : ''}
+
     <div class="card"><h2>1차 집계</h2>${scoreTable(r.round1)}</div>
     <div class="card"><h2>2차 집계</h2>${scoreTable(r.round2)}</div>
     <p class="muted" style="font-size:.82rem">10초마다 자동 갱신됩니다.</p>`;
+}
+
+function voterNumberCard() {
+  const max = D.config.expectedVoters;
+  const vn = D.votedNumbers || { round1: [], round2: [] };
+  const line = (label, arr) => {
+    const set = new Set(arr);
+    const notYet = [];
+    for (let i = 1; i <= max; i++) if (!set.has(i)) notYet.push(i);
+    return `<p style="margin:.3em 0"><b>${label}</b> — 완료 ${arr.length}/${max}명 ·
+      <span class="muted">미투표: ${notYet.length ? notYet.join(', ') : '없음 ✓'}</span></p>`;
+  };
+  return `<div class="card">
+    <h2>투표 현황 (번호별)</h2>
+    ${line('1차', vn.round1)}
+    ${line('2차', vn.round2)}
+    <p class="hint">미투표 번호에게 리마인드하세요. (집계 화면에는 번호별 선택 내용을 표시하지 않습니다.)</p>
+  </div>`;
 }
 
 const d1 = (n) => Math.round(Number(n || 0) * 10) / 10;

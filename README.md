@@ -45,19 +45,12 @@ npm start
 
 > 클릭 단위 상세 절차는 **[DEPLOY.md](DEPLOY.md)** 참고. 요약:
 
-투표 기록 파일이 유지되도록 **영구 디스크**가 있는 호스팅을 쓰세요.
+투표 기록 파일(`db.json`)이 유지되도록 **재시작해도 파일이 남는(영구 디스크)** 호스팅을 쓰세요.
+무료 티어(예: Render Free)는 일정 시간 미접속 시 잠들며 깨어날 때 파일이 초기화되어 투표가 사라질 수 있으니 주의.
 
-### Render.com (추천, 무료 플랜 가능)
-
-1. 이 폴더를 GitHub 저장소로 올립니다.
-2. Render → **New → Blueprint** → 저장소 선택 (`render.yaml` 자동 인식).
-3. 배포 후 대시보드 **Environment** 에서 `ADMIN_PASSWORD` 값을 입력하고 재배포.
-4. 발급된 `https://<이름>.onrender.com` 주소를 사내에 공유.
-
-### Railway / Fly.io / 일반 VPS
-
-- `Dockerfile` 포함. `docker build -t vote . && docker run -p 3000:3000 -e ADMIN_PASSWORD=... -v $PWD/data:/app/data vote`
-- VPS 직접 실행 시 `pm2 start server.js` + 앞단에 Nginx(HTTPS) 권장.
+- **Render (유료 Starter)** — `render.yaml` 포함. New → Blueprint 로 한 번에 배포. 자세히는 [DEPLOY.md](DEPLOY.md) 방법 A.
+- **Fly.io (무료 한도)** — 볼륨 1개로 파일 유지. [DEPLOY.md](DEPLOY.md) 방법 B.
+- **VPS / 사내 서버** — `Dockerfile` 포함. `docker run -p 3000:3000 -e ADMIN_PASSWORD=... -v $PWD/data:/app/data <image>` 또는 `pm2 start server.js` + Nginx(HTTPS).
 
 ### 환경변수
 

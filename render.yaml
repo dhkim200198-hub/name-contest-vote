@@ -1,17 +1,24 @@
-# Render.com 배포용 설정. 저장소를 Render에 연결하고 "Blueprint" 로 이 파일을 선택하세요.
+# Render.com 배포 설정.
+# 저장소를 Render에 연결하고 New → Blueprint 에서 이 파일을 선택하면 자동 적용됩니다.
+#
+# ⚠️ 투표 기록(db.json)을 잃지 않으려면 "영구 디스크"가 필요하고,
+#    영구 디스크는 Render 유료 플랜(Starter, 월 $7 부터)에서만 됩니다.
+#    무료(Free) 플랜은 15분간 접속이 없으면 잠들고, 깨어날 때 파일이 초기화되어
+#    투표 도중 표가 사라질 수 있으므로 실제 공모전에는 권장하지 않습니다.
+#    → 무료로 하려면 DEPLOY.md 의 Fly.io 방법을 참고하세요.
 services:
   - type: web
     name: name-contest-vote
     runtime: node
-    plan: free
+    plan: starter # 영구 디스크 사용을 위해 유료 플랜. 공모전이 끝나면 서비스 삭제(=과금 중지) 가능.
     buildCommand: npm install
     startCommand: node server.js
     envVars:
       - key: ADMIN_PASSWORD
-        sync: false # 배포 후 Render 대시보드에서 값 입력
+        sync: false # 배포 후 Render 대시보드 Environment 에서 값 입력
       - key: DATA_DIR
         value: /var/data
     disk:
       name: vote-data
-      mountPath: /var/data # 투표 기록 영구 보관 (무료 플랜도 1GB 제공)
+      mountPath: /var/data # 투표 기록 영구 보관
       sizeGB: 1

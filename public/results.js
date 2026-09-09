@@ -27,8 +27,9 @@ async function load() {
 function roundTable(section) {
   return `
     <div class="grid-2 mt">
-      <div class="stat"><div class="k">투표 수</div><div class="v">${section.totalBallots}</div></div>
-      <div class="stat"><div class="k">발급 코드</div><div class="v">${section.usedCodes} / ${section.codeCount}</div></div>
+      <div class="stat"><div class="k">투표 수</div><div class="v">${section.totalBallots}${
+        section.expectedVoters ? ` / ${section.expectedVoters}` : ''
+      }</div></div>
       <div class="stat"><div class="k">배점</div><div class="v" style="font-size:1rem">${(section.weights || section.points).join(' · ')}</div></div>
     </div>
     <div class="table-scroll mt">

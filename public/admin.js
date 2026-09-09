@@ -88,7 +88,6 @@ function renderTab() {
       ${[
         ['settings', '설정'],
         ['candidates', `후보 ${D.config.candidateCount}`],
-        ['codes', '투표 코드'],
         ['results', '결과 · 집계'],
       ]
         .map(([k, l]) => `<button data-tab="${k}" class="${tab === k ? 'active' : ''}">${l}</button>`)
@@ -104,7 +103,6 @@ function renderTab() {
   const body = document.getElementById('tabBody');
   if (tab === 'settings') renderSettings(body);
   if (tab === 'candidates') renderCandidates(body);
-  if (tab === 'codes') renderCodes(body);
   if (tab === 'results') {
     renderResults(body);
     pollTimer = setInterval(() => authed('/api/admin/data').then((d) => {
@@ -131,19 +129,30 @@ function renderSettings(root) {
   root.innerHTML = `
     <div class="card">
       <h2>단계 진행</h2>
-      <p class="hint">현재: <b>${PHASES.find((p) => p[0] === c.phase)?.[1] || c.phase}</b>.
-        단계를 바꾸면 투표 페이지가 즉시 반영됩니다. (1차/2차 시작은 코드·후보 조건이 충족돼야 합니다)</p>
+      <p class="hint">현재: <b>${PHASES.find((p) => p[0] === c.phase)?.[1] || c.phase}</b> ·
+        1차 ${D.ballotCounts.round1}표 / 2차 ${D.ballotCounts.round2}표.
+        단계를 바꾸면 투표 페이지에 즉시 반영됩니다. (1차·2차 시작은 이름이 2개 이상 입력돼야 합니다)</p>
       <div class="phasebar">
         ${PHASES.map(([k, l]) => `<button data-phase="${k}" class="${c.phase === k ? 'active' : ''}">${l}</button>`).join('')}
       </div>
       <div id="phaseErr" class="mt"></div>
-      <label class="field mt" style="max-width:260px">
-        <span>결과 페이지(/results) 공개</span>
-        <select id="resPub">
-          <option value="false" ${!c.resultsPublic ? 'selected' : ''}>비공개 (마감 후 자동 공개)</option>
-          <option value="true" ${c.resultsPublic ? 'selected' : ''}>지금 공개</option>
-        </select>
-      </label>
+      <div class="grid-2 mt">
+        <label class="field">
+          <span>예상 투표 인원 (이 수에 도달하면 자동 마감 · 0 = 무제한)</span>
+          <div class="btn-row">
+            <input type="number" id="expected" value="${c.expectedVoters ?? 19}" min="0" max="100000" style="width:110px" />
+            <button id="saveExpected">적용</button>
+          </div>
+        </label>
+        <label class="field">
+          <span>결과 페이지(/results) 공개</span>
+          <select id="resPub">
+            <option value="false" ${!c.resultsPublic ? 'selected' : ''}>비공개 (마감 후 자동 공개)</option>
+            <option value="true" ${c.resultsPublic ? 'selected' : ''}>지금 공개</option>
+          </select>
+        </label>
+      </div>
+      <p class="hint">투표는 로그인·코드 없이 링크만 열면 됩니다. 같은 기기에서 재투표는 막지만(브라우저 저장), 방문자가 브라우저 데이터를 지우면 다시 투표할 수 있습니다. 링크는 사내에만 공유하세요.</p>
     </div>
 
     <div class="card">
@@ -188,7 +197,7 @@ function renderSettings(root) {
 
     <div class="card" style="border-color:color-mix(in srgb,var(--danger) 40%,transparent)">
       <h2 style="color:var(--danger)">위험 구역</h2>
-      <p class="hint">초기화하면 해당 라운드의 투표 기록이 삭제되고 코드가 다시 미사용 상태가 됩니다.</p>
+      <p class="hint">초기화하면 해당 라운드의 투표 기록이 모두 삭제됩니다. 되돌릴 수 없습니다.</p>
       <div class="btn-row">
         <button class="btn-danger" data-reset="round1">1차 투표 초기화</button>
         <button class="btn-danger" data-reset="round2">2차 투표 초기화</button>
@@ -218,6 +227,15 @@ function renderSettings(root) {
   document.getElementById('resPub').addEventListener('change', async (e) => {
     await authed('/api/admin/config', { method: 'PUT', body: { resultsPublic: e.target.value === 'true' } });
     toast('결과 공개 설정을 저장했습니다.');
+  });
+
+  document.getElementById('saveExpected').addEventListener('click', async () => {
+    await authed('/api/admin/config', {
+      method: 'PUT',
+      body: { expectedVoters: Number(document.getElementById('expected').value) },
+    });
+    await refresh();
+    toast('예상 투표 인원을 저장했습니다.');
   });
 
   document.getElementById('saveInfo').addEventListener('click', async () => {
@@ -332,83 +350,14 @@ function renderCandidates(root) {
 }
 
 /* ------------------------------------------------------------------ */
-/* 코드 탭                                                             */
-/* ------------------------------------------------------------------ */
-function renderCodes(root) {
-  root.innerHTML = `
-    <div class="card">
-      <h2>투표 코드</h2>
-      <p class="hint">라운드별로 코드를 발급해 사내 메신저 등으로 1인 1개씩 배포하세요.
-        코드 수만큼만 투표가 가능하므로 별도 로그인이 필요 없습니다.
-        표가 한 장이라도 들어오면 재발급이 막힙니다(초기화 후 가능).</p>
-      <div id="r1"></div>
-      <div id="r2" class="mt"></div>
-    </div>`;
-  renderCodeBlock(document.getElementById('r1'), 1);
-  renderCodeBlock(document.getElementById('r2'), 2);
-}
-
-function renderCodeBlock(root, round) {
-  const codes = round === 1 ? D.codes.round1 : D.codes.round2;
-  const ballots = round === 1 ? D.ballotCounts.round1 : D.ballotCounts.round2;
-  const used = codes.filter((c) => c.used).length;
-  root.innerHTML = `
-    <h3 style="margin-bottom:6px">${round}차 코드 — ${codes.length}개 발급${codes.length ? ` · ${used}개 사용` : ''}</h3>
-    <div class="btn-row" style="margin-bottom:10px">
-      <input type="number" id="cnt${round}" value="19" min="1" max="200" style="width:90px" />
-      <button class="btn-primary" id="gen${round}" ${ballots > 0 ? 'disabled' : ''}>코드 생성 / 재발급</button>
-      ${codes.length ? `<button id="copy${round}">전체 복사</button><button id="csv${round}">CSV 내려받기</button>` : ''}
-    </div>
-    ${ballots > 0 ? `<div class="notice" style="margin-bottom:10px">이미 ${ballots}표가 접수되어 재발급이 잠겼습니다. "설정 → 위험 구역"에서 초기화하면 다시 생성할 수 있습니다.</div>` : ''}
-    ${
-      codes.length
-        ? `<div class="table-scroll"><table class="data"><thead><tr><th>#</th><th>코드</th><th>상태</th></tr></thead>
-        <tbody>${codes
-          .map(
-            (c, i) =>
-              `<tr><td class="num">${i + 1}</td><td><code class="mono">${c.code}</code></td>
-             <td>${c.used ? `<span class="tag no">사용됨 · ${new Date(c.usedAt).toLocaleString('ko-KR')}</span>` : '<span class="tag ok">미사용</span>'}</td></tr>`,
-          )
-          .join('')}</tbody></table></div>`
-        : '<p class="muted">아직 생성된 코드가 없습니다.</p>'
-    }`;
-
-  const genBtn = document.getElementById(`gen${round}`);
-  if (genBtn && !genBtn.disabled) {
-    genBtn.addEventListener('click', async () => {
-      const count = Number(document.getElementById(`cnt${round}`).value) || 19;
-      if (codes.length && !confirm('기존 코드를 모두 새 코드로 교체합니다. 계속할까요?')) return;
-      try {
-        await authed('/api/admin/codes', { body: { round, count } });
-        await refresh();
-        toast(`${round}차 코드를 생성했습니다.`);
-      } catch (e) {
-        toast(e.message, 'err');
-      }
-    });
-  }
-  document.getElementById(`copy${round}`)?.addEventListener('click', () => {
-    navigator.clipboard.writeText(codes.map((c) => c.code).join('\n')).then(() => toast('클립보드에 복사했습니다.'));
-  });
-  document.getElementById(`csv${round}`)?.addEventListener('click', () => {
-    const csv = '번호,코드,상태\n' + codes.map((c, i) => `${i + 1},${c.code},${c.used ? '사용됨' : '미사용'}`).join('\n');
-    const url = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }));
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `round${round}-codes.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  });
-}
-
-/* ------------------------------------------------------------------ */
 /* 결과 탭                                                             */
 /* ------------------------------------------------------------------ */
 function scoreTable(section, extraHead = '', extraCell = () => '') {
   return `
     <div class="grid-2">
-      <div class="stat"><div class="k">투표 수</div><div class="v">${section.totalBallots}</div></div>
-      <div class="stat"><div class="k">사용 코드</div><div class="v">${section.usedCodes}/${section.codeCount}</div></div>
+      <div class="stat"><div class="k">투표 수</div><div class="v">${section.totalBallots}${
+        section.expectedVoters ? ` / ${section.expectedVoters}` : ''
+      }</div></div>
       <div class="stat"><div class="k">배점</div><div class="v" style="font-size:1rem">${(section.weights || section.points).join(' · ')}</div></div>
     </div>
     <div class="table-scroll mt">

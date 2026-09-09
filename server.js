@@ -5,7 +5,6 @@ import { dirname, join } from 'node:path';
 
 import * as store from './lib/store.js';
 import { tallyRound1, tallyRound2 } from './lib/tally.js';
-import { makeCodes } from './lib/codes.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
@@ -76,30 +75,40 @@ function roundOf(phase) {
   if (phase === 'round2_open') return 2;
   return null;
 }
-function codeList(d, round) {
-  return round === 1 ? d.codes.round1 : d.codes.round2;
-}
 function ballotList(d, round) {
   return round === 1 ? d.ballots.round1 : d.ballots.round2;
 }
-function findCode(d, round, raw) {
-  const code = String(raw || '').toUpperCase().trim();
-  return codeList(d, round).find((x) => x.code === code);
+function seatsFull(d, round) {
+  const cap = Number(d.config.expectedVoters) || 0;
+  return cap > 0 && ballotList(d, round).length >= cap;
 }
 function validateRanking(ranking, allowedIds, maxLen) {
-  if (!Array.isArray(ranking) || ranking.length === 0) return '선택된 후보가 없습니다.';
+  if (!Array.isArray(ranking) || ranking.length === 0) return '선택된 이름이 없습니다.';
   if (ranking.some((x) => typeof x !== 'string')) return '잘못된 요청입니다.';
-  if (ranking.length > maxLen) return `최대 ${maxLen}명까지 선택할 수 있습니다.`;
-  if (new Set(ranking).size !== ranking.length) return '같은 후보를 중복해서 선택했습니다.';
+  if (ranking.length > maxLen) return `최대 ${maxLen}개까지 선택할 수 있습니다.`;
+  if (new Set(ranking).size !== ranking.length) return '같은 이름을 중복해서 선택했습니다.';
   const allow = new Set(allowedIds);
-  if (ranking.some((id) => !allow.has(id))) return '선택할 수 없는 후보가 포함되어 있습니다.';
+  if (ranking.some((id) => !allow.has(id))) return '선택할 수 없는 이름이 포함되어 있습니다.';
   return null;
 }
-function round2Ballot(d) {
-  // 2차도 1차와 동일하게 후보 전체를 대상으로 다시 순위를 매긴다.
+
+// 현재 활성 라운드의 투표 용지 정보
+function ballotInfo(d, round) {
   const candidates = votableCandidates(d).map(publicCandidate);
-  const maxPick = Math.min(d.config.round2.points.length, candidates.length);
-  return { candidates, maxPick };
+  if (round === 1) {
+    return {
+      round: 1,
+      candidates,
+      maxPick: Math.min(d.config.round1.weights.length, candidates.length),
+      points: d.config.round1.weights,
+    };
+  }
+  return {
+    round: 2,
+    candidates,
+    maxPick: Math.min(d.config.round2.points.length, candidates.length),
+    points: d.config.round2.points,
+  };
 }
 
 function buildResults(d) {
@@ -139,24 +148,24 @@ function buildResults(d) {
   });
   combined = combined.map(label);
 
+  const expected = Number(cfg.expectedVoters) || 0;
   return {
     phase: cfg.phase,
     title: cfg.title,
     subtitle: cfg.subtitle,
     prize: cfg.prize,
+    expectedVoters: expected,
     scoreWeights: { round1: w1, round2: w2 },
     round1: {
       weights: cfg.round1.weights,
       totalBallots: r1.totalBallots,
-      codeCount: d.codes.round1.length,
-      usedCodes: d.codes.round1.filter((c) => c.used).length,
+      expectedVoters: expected,
       rows: r1.rows.map(label),
     },
     round2: {
       points: cfg.round2.points,
       totalBallots: r2.totalBallots,
-      codeCount: d.codes.round2.length,
-      usedCodes: d.codes.round2.filter((c) => c.used).length,
+      expectedVoters: expected,
       rows: r2.rows.map(label),
     },
     combined,
@@ -170,52 +179,22 @@ function buildResults(d) {
 app.get('/api/state', (req, res) => {
   const d = store.getData();
   const cfg = d.config;
+  const round = roundOf(cfg.phase);
   const out = {
     title: cfg.title,
     subtitle: cfg.subtitle,
     prize: cfg.prize,
     phase: cfg.phase,
     resultsPublic: cfg.resultsPublic,
-    round1: { weights: cfg.round1.weights },
-    round2: { points: cfg.round2.points },
-    activeRound: roundOf(cfg.phase),
+    expectedVoters: Number(cfg.expectedVoters) || 0,
+    activeRound: round,
   };
-  res.json(out);
-});
-
-app.post('/api/vote/check', (req, res) => {
-  const d = store.getData();
-  const round = roundOf(d.config.phase);
-  if (!round) return res.status(409).json({ error: '지금은 진행 중인 투표가 없습니다.' });
-
-  const raw = req.body?.code;
-  if (!String(raw || '').trim()) return res.status(400).json({ error: '투표 코드를 입력하세요.' });
-
-  const rec = findCode(d, round, raw);
-  if (!rec) return res.status(404).json({ error: '존재하지 않는 코드입니다. 다시 확인해 주세요.' });
-  if (rec.used) return res.status(409).json({ error: '이미 사용된 코드입니다.' });
-
-  if (round === 1) {
-    return res.json({
-      ok: true,
-      round: 1,
-      title: d.config.title,
-      prize: d.config.prize,
-      candidates: votableCandidates(d).map(publicCandidate),
-      maxPick: d.config.round1.weights.length,
-      weights: d.config.round1.weights,
-    });
+  if (round) {
+    out.ballot = ballotInfo(d, round);
+    out.count = ballotList(d, round).length;
+    out.full = seatsFull(d, round);
   }
-  const { candidates, maxPick } = round2Ballot(d);
-  return res.json({
-    ok: true,
-    round: 2,
-    title: d.config.title,
-    prize: d.config.prize,
-    candidates,
-    maxPick,
-    points: d.config.round2.points,
-  });
+  res.json(out);
 });
 
 app.post('/api/vote/submit', (req, res) => {
@@ -223,33 +202,33 @@ app.post('/api/vote/submit', (req, res) => {
   const round = roundOf(d.config.phase);
   if (!round) return res.status(409).json({ error: '지금은 진행 중인 투표가 없습니다.' });
 
-  const raw = req.body?.code;
   const ranking = req.body?.ranking;
-  const rec = findCode(d, round, raw);
-  if (!rec) return res.status(404).json({ error: '존재하지 않는 코드입니다.' });
-  if (rec.used) return res.status(409).json({ error: '이미 사용된 코드입니다.' });
+  const voterKey = String(req.body?.voterKey || '').slice(0, 64);
+  if (!voterKey) return res.status(400).json({ error: '잘못된 요청입니다. 페이지를 새로고침해 주세요.' });
 
-  let allowedIds;
-  let maxPick;
-  if (round === 1) {
-    allowedIds = votableCandidates(d).map((c) => c.id);
-    maxPick = d.config.round1.weights.length;
-  } else {
-    allowedIds = votableCandidates(d).map((c) => c.id);
-    maxPick = Math.min(d.config.round2.points.length, allowedIds.length);
+  if (seatsFull(d, round)) {
+    return res.status(409).json({ error: '예정된 투표 인원이 모두 참여하여 마감되었습니다.' });
   }
-  const err = validateRanking(ranking, allowedIds, maxPick);
+  if (ballotList(d, round).some((b) => b.voterKey === voterKey)) {
+    return res.status(409).json({ error: '이 기기에서는 이미 투표를 완료했습니다.' });
+  }
+
+  const allowedIds = votableCandidates(d).map((c) => c.id);
+  const info = ballotInfo(d, round);
+  const err = validateRanking(ranking, allowedIds, info.maxPick);
   if (err) return res.status(400).json({ error: err });
 
+  let stored = false;
   store.mutate((data) => {
-    const r = findCode(data, round, raw);
-    if (!r || r.used) return; // 동시 요청 방어
-    r.used = true;
-    r.usedAt = new Date().toISOString();
-    ballotList(data, round).push({ code: r.code, ranking, at: r.usedAt });
+    const list = ballotList(data, round);
+    if (seatsFull(data, round)) return;
+    if (list.some((b) => b.voterKey === voterKey)) return;
+    list.push({ voterKey, ranking, at: new Date().toISOString() });
+    stored = true;
   });
+  if (!stored) return res.status(409).json({ error: '방금 마감되었거나 이미 투표하셨습니다.' });
 
-  res.json({ ok: true });
+  res.json({ ok: true, count: ballotList(store.getData(), round).length });
 });
 
 app.get('/api/results', (req, res) => {
@@ -283,7 +262,6 @@ app.get('/api/admin/data', requireAdmin, (req, res) => {
   res.json({
     config: d.config,
     candidates: d.candidates,
-    codes: d.codes,
     ballotCounts: { round1: d.ballots.round1.length, round2: d.ballots.round2.length },
     results: buildResults(d),
   });
@@ -297,6 +275,9 @@ app.put('/api/admin/config', requireAdmin, (req, res) => {
     if (typeof b.subtitle === 'string') c.subtitle = b.subtitle.slice(0, 200);
     if (Number.isFinite(b.prize) && b.prize >= 0) c.prize = Math.round(b.prize);
     if (typeof b.resultsPublic === 'boolean') c.resultsPublic = b.resultsPublic;
+    if (Number.isFinite(b.expectedVoters) && b.expectedVoters >= 0) {
+      c.expectedVoters = Math.min(100000, Math.round(b.expectedVoters));
+    }
 
     if (b.round1) {
       if (Array.isArray(b.round1.weights)) {
@@ -343,7 +324,7 @@ app.put('/api/admin/candidates', requireAdmin, (req, res) => {
   res.json({ ok: true, candidates: store.getData().candidates });
 });
 
-// 후보(이름) 칸 수 조정 — 준비 단계 + 표/결선 없음일 때만
+// 후보(이름) 칸 수 조정 — 준비 단계 + 표 없음일 때만
 app.put('/api/admin/candidate-count', requireAdmin, (req, res) => {
   const n = Math.round(Number(req.body?.count));
   if (!Number.isFinite(n) || n < 2 || n > 30) {
@@ -368,39 +349,16 @@ app.put('/api/admin/candidate-count', requireAdmin, (req, res) => {
   res.json({ ok: true, candidateCount: n, candidates: store.getData().candidates });
 });
 
-app.post('/api/admin/codes', requireAdmin, (req, res) => {
-  const round = Number(req.body?.round);
-  const count = Math.min(200, Math.max(1, Number(req.body?.count) || 19));
-  if (round !== 1 && round !== 2) return res.status(400).json({ error: 'round 는 1 또는 2 여야 합니다.' });
-
-  const d = store.getData();
-  if (ballotList(d, round).length > 0) {
-    return res.status(409).json({
-      error: `${round}차 투표에 이미 표가 있어 코드를 다시 만들 수 없습니다. "위험 구역"에서 ${round}차를 먼저 초기화하세요.`,
-    });
-  }
-  const existing = new Set([...d.codes.round1, ...d.codes.round2].map((c) => c.code));
-  const fresh = makeCodes(count, existing).map((code) => ({ code, used: false, usedAt: null }));
-  store.mutate((data) => {
-    if (round === 1) data.codes.round1 = fresh;
-    else data.codes.round2 = fresh;
-  });
-  res.json({ ok: true, round, codes: fresh });
-});
-
 const PHASES = ['prep', 'round1_open', 'round1_closed', 'round2_open', 'round2_closed', 'done'];
 app.put('/api/admin/phase', requireAdmin, (req, res) => {
   const target = req.body?.phase;
   if (!PHASES.includes(target)) return res.status(400).json({ error: '알 수 없는 단계입니다.' });
 
   const d = store.getData();
-  if (target === 'round1_open') {
-    if (d.codes.round1.length === 0) return res.status(400).json({ error: '먼저 1차 투표 코드를 생성하세요.' });
-    if (votableCandidates(d).length < 2) return res.status(400).json({ error: '이름이 입력된 후보가 2개 이상 필요합니다.' });
-  }
-  if (target === 'round2_open') {
-    if (votableCandidates(d).length < 2) return res.status(400).json({ error: '이름이 입력된 후보가 2개 이상 필요합니다.' });
-    if (d.codes.round2.length === 0) return res.status(400).json({ error: '먼저 2차 투표 코드를 생성하세요.' });
+  if (target === 'round1_open' || target === 'round2_open') {
+    if (votableCandidates(d).length < 2) {
+      return res.status(400).json({ error: '이름이 입력된 후보가 2개 이상 필요합니다.' });
+    }
   }
   store.mutate((data) => {
     data.config.phase = target;
@@ -414,23 +372,9 @@ app.post('/api/admin/reset', requireAdmin, (req, res) => {
     return res.status(400).json({ error: 'what 은 round1 | round2 | all 이어야 합니다.' });
   }
   store.mutate((d) => {
-    if (what === 'round1' || what === 'all') {
-      d.ballots.round1 = [];
-      d.codes.round1.forEach((c) => {
-        c.used = false;
-        c.usedAt = null;
-      });
-    }
-    if (what === 'round2' || what === 'all') {
-      d.ballots.round2 = [];
-      d.codes.round2.forEach((c) => {
-        c.used = false;
-        c.usedAt = null;
-      });
-    }
-    if (what === 'all') {
-      d.config.phase = 'prep';
-    }
+    if (what === 'round1' || what === 'all') d.ballots.round1 = [];
+    if (what === 'round2' || what === 'all') d.ballots.round2 = [];
+    if (what === 'all') d.config.phase = 'prep';
   });
   res.json({ ok: true });
 });

@@ -25,16 +25,22 @@ async function load() {
 }
 
 function roundTable(section) {
+  const scheme =
+    section.tokenBudget != null
+      ? `토큰 ${section.tokenBudget}점 / 최대 ${section.maxPicks}개`
+      : (section.points || []).join(' · ') + '점';
   return `
     <div class="grid-2 mt">
       <div class="stat"><div class="k">투표 수</div><div class="v">${section.totalBallots}${
         section.expectedVoters ? ` / ${section.expectedVoters}` : ''
       }</div></div>
-      <div class="stat"><div class="k">배점</div><div class="v" style="font-size:1rem">${(section.weights || section.points).join(' · ')}</div></div>
+      <div class="stat"><div class="k">방식</div><div class="v" style="font-size:1rem">${scheme}</div></div>
     </div>
     <div class="table-scroll mt">
       <table class="data">
-        <thead><tr><th>순위</th><th>이름</th><th>영문</th><th class="num">점수</th><th class="num">1순위표</th></tr></thead>
+        <thead><tr><th>순위</th><th>이름</th><th>영문</th><th class="num">점수</th><th class="num">${
+          section.tokenBudget != null ? '최고배점' : '1순위표'
+        }</th></tr></thead>
         <tbody>
           ${section.rows
             .map(
@@ -83,7 +89,7 @@ function render(r) {
     </div>
   </div>`;
 
-  html += `<div class="card"><h2>1차 투표 (순위별 가중 배점)</h2>${roundTable(r.round1)}</div>`;
+  html += `<div class="card"><h2>1차 투표 (토큰 자유 배분)</h2>${roundTable(r.round1)}</div>`;
   html += `<div class="card"><h2>2차 투표 (순위별 점수)</h2>${roundTable(r.round2)}</div>`;
   html += `<p class="muted" style="font-size:.82rem">15초마다 자동 새로고침됩니다.</p>`;
   view.innerHTML = html;

@@ -9,7 +9,6 @@ const PHASE_MSG = {
   done: '공모전이 종료되었습니다. 결과 페이지에서 최종 선정된 이름을 확인하세요.',
 };
 
-// 이 브라우저의 익명 식별자 (중복 투표 방지용, 서버로만 전송)
 function voterKey() {
   try {
     let k = localStorage.getItem('voterKey');
@@ -38,7 +37,8 @@ function hasVoted(round) {
 }
 
 let st = null;
-let picked = []; // 선택된 이름 id (순위 순서)
+let picked = []; // 선택된 이름 id (선택/순위 순서)
+let alloc = {}; // 1차 전용: id -> 배분 점수
 
 init();
 
@@ -55,6 +55,7 @@ async function init() {
     if (st.full) return renderFull(st.activeRound);
     if (hasVoted(st.activeRound)) return renderAlready(st.activeRound);
     picked = [];
+    alloc = {};
     renderBallot();
   } catch (e) {
     view.innerHTML = `<div class="notice err">${esc(e.message)}</div>`;
@@ -68,7 +69,6 @@ function renderClosed(phase) {
       <p class="hint">${esc(PHASE_MSG[phase] || '현재 투표를 받고 있지 않습니다.')}</p>
     </div>`;
 }
-
 function renderFull(round) {
   view.innerHTML = `
     <div class="card">
@@ -76,7 +76,6 @@ function renderFull(round) {
       <p class="hint">예정된 투표 인원이 모두 참여하여 마감되었습니다. 결과는 <a href="/results">결과 페이지</a>에서 확인하세요.</p>
     </div>`;
 }
-
 function renderAlready(round) {
   view.innerHTML = `
     <div class="card">
@@ -86,32 +85,30 @@ function renderAlready(round) {
     </div>`;
 }
 
-function pointsFor(rankIdx) {
-  return st.ballot.points[rankIdx] ?? 0;
+const isR1 = () => st.ballot.round === 1;
+const budget = () => st.ballot.tokenBudget || 100;
+const allocSum = () => picked.reduce((s, id) => s + (Number(alloc[id]) || 0), 0);
+function r2Points(idx) {
+  return st.ballot.points[idx] ?? 0;
 }
 
 function renderBallot() {
   const b = st.ballot;
-  const total = b.points.slice(0, b.maxPick).reduce((a, c) => a + c, 0);
   const seat =
     st.expectedVoters > 0
       ? `<span class="tag">${st.count} / ${st.expectedVoters}명 참여</span>`
       : `<span class="tag">${st.count}명 참여</span>`;
+  const hint = isR1()
+    ? `총 <b>${budget()}점(토큰)</b>을 마음에 드는 이름 <b>최대 ${b.maxPick}개</b>에 자유롭게 나눠 주세요.
+       한 이름에 몰아줘도 되고, 골고루 줘도 됩니다. <b>합계가 정확히 ${budget()}점</b>이어야 제출됩니다.`
+    : `같은 이름들을 다시 <b>순위대로 최대 ${b.maxPick}개</b> 선택하세요.
+       순위에 따라 <b>${b.points.slice(0, b.maxPick).join(' · ')}점</b>이 부여되며, <b>1차 점수와 합산</b>해 최종 순위를 냅니다.
+       <br />원하는 만큼만 골라도 됩니다.`;
+
   view.innerHTML = `
     <div class="card">
       <h2>${b.round}차 투표 &nbsp;${seat}</h2>
-      <p class="hint">
-        ${
-          b.round === 1
-            ? `마음에 드는 이름을 <b>순위대로 최대 ${b.maxPick}개</b> 선택하세요. 순위에 따라 <b>${b.points
-                .slice(0, b.maxPick)
-                .join(' · ')}점</b>(총 ${total}점)이 부여됩니다.`
-            : `같은 이름들을 다시 <b>순위대로 최대 ${b.maxPick}개</b> 선택하세요. 순위에 따라 <b>${b.points
-                .slice(0, b.maxPick)
-                .join(' · ')}점</b>이 부여되며, <b>1차 점수와 합산</b>해 최종 순위를 냅니다.`
-        }
-        <br />원하는 만큼만 골라도 됩니다.
-      </p>
+      <p class="hint">${hint}</p>
       <div id="rankPanel"></div>
       <div id="candList"></div>
       <div id="submitErr" class="mt"></div>
@@ -125,10 +122,59 @@ function renderBallot() {
 function paint() {
   const b = st.ballot;
   const byId = Object.fromEntries(b.candidates.map((c) => [c.id, c]));
-
   const panel = document.getElementById('rankPanel');
+
   if (picked.length === 0) {
     panel.innerHTML = '';
+  } else if (isR1()) {
+    const sum = allocSum();
+    const ok = sum === budget();
+    panel.innerHTML = `
+      <div class="rankpanel">
+        <b>점수 배분 (${picked.length}/${b.maxPick})</b>
+        <ol>
+          ${picked
+            .map(
+              (id) => `
+            <li class="rankrow">
+              <span class="who">${esc(byId[id].name)}</span>
+              <input type="number" inputmode="numeric" min="0" max="${budget()}" step="1"
+                     value="${alloc[id] ?? 0}" data-alloc="${id}"
+                     style="width:88px;text-align:right" />
+              <span class="pts">점</span>
+              <button data-rm="${id}">✕</button>
+            </li>`,
+            )
+            .join('')}
+        </ol>
+        <div class="mt" style="font-weight:700;color:${ok ? 'var(--good)' : 'var(--danger)'}">
+          합계 ${sum} / ${budget()}점 ${ok ? '✓' : `(${budget() - sum > 0 ? `${budget() - sum}점 남음` : `${sum - budget()}점 초과`})`}
+        </div>
+      </div>`;
+    panel.querySelectorAll('[data-alloc]').forEach((el) => {
+      el.addEventListener('input', () => {
+        let v = Math.floor(Number(el.value) || 0);
+        if (v < 0) v = 0;
+        if (v > budget()) v = budget();
+        alloc[el.dataset.alloc] = v;
+        // 합계 표시만 갱신 (input 포커스 유지 위해 부분 갱신)
+        const sum2 = allocSum();
+        const okk = sum2 === budget();
+        const badge = panel.querySelector('.rankpanel > .mt');
+        if (badge) {
+          badge.style.color = okk ? 'var(--good)' : 'var(--danger)';
+          badge.textContent = `합계 ${sum2} / ${budget()}점 ${okk ? '✓' : sum2 < budget() ? `(${budget() - sum2}점 남음)` : `(${sum2 - budget()}점 초과)`}`;
+        }
+        document.getElementById('submit').disabled = !(picked.length && sum2 === budget());
+      });
+    });
+    panel.querySelectorAll('[data-rm]').forEach((el) =>
+      el.addEventListener('click', () => {
+        picked = picked.filter((x) => x !== el.dataset.rm);
+        delete alloc[el.dataset.rm];
+        paint();
+      }),
+    );
   } else {
     panel.innerHTML = `
       <div class="rankpanel">
@@ -140,7 +186,7 @@ function paint() {
             <li class="rankrow">
               <span class="pos">${i + 1}순위</span>
               <span class="who">${esc(byId[id].name)}</span>
-              <span class="pts">${pointsFor(i)}점</span>
+              <span class="pts">${r2Points(i)}점</span>
               <button data-up="${i}" ${i === 0 ? 'disabled' : ''}>▲</button>
               <button data-down="${i}" ${i === picked.length - 1 ? 'disabled' : ''}>▼</button>
               <button data-rm="${id}">✕</button>
@@ -162,9 +208,10 @@ function paint() {
   const list = document.getElementById('candList');
   list.innerHTML = b.candidates
     .map((c) => {
-      const rank = picked.indexOf(c.id);
-      const isPicked = rank >= 0;
+      const idx = picked.indexOf(c.id);
+      const isPicked = idx >= 0;
       const full = picked.length >= b.maxPick;
+      const badge = isR1() ? `${alloc[c.id] ?? 0}점` : idx + 1;
       return `
       <div class="cand ${isPicked ? 'picked' : ''}">
         <div>
@@ -174,7 +221,7 @@ function paint() {
         <div class="right">
           ${
             isPicked
-              ? `<span class="rankbadge" data-unpick="${c.id}" title="선택 취소" style="cursor:pointer">${rank + 1}</span>`
+              ? `<span class="rankbadge" data-unpick="${c.id}" title="선택 취소" style="cursor:pointer;${isR1() ? 'width:auto;padding:0 10px;border-radius:14px' : ''}">${badge}</span>`
               : `<button class="pickbtn" data-pick="${c.id}" ${full ? 'disabled' : ''}>선택</button>`
           }
         </div>
@@ -184,18 +231,24 @@ function paint() {
     .join('');
   list.querySelectorAll('[data-pick]').forEach((el) =>
     el.addEventListener('click', () => {
-      if (picked.length < b.maxPick) picked.push(el.dataset.pick);
+      if (picked.length < b.maxPick) {
+        picked.push(el.dataset.pick);
+        if (isR1() && alloc[el.dataset.pick] == null) alloc[el.dataset.pick] = 0;
+      }
       paint();
     }),
   );
   list.querySelectorAll('[data-unpick]').forEach((el) =>
     el.addEventListener('click', () => {
       picked = picked.filter((x) => x !== el.dataset.unpick);
+      delete alloc[el.dataset.unpick];
       paint();
     }),
   );
 
-  document.getElementById('submit').disabled = picked.length === 0;
+  document.getElementById('submit').disabled = isR1()
+    ? !(picked.length && allocSum() === budget())
+    : picked.length === 0;
 }
 
 function move(i, dir) {
@@ -207,7 +260,13 @@ function move(i, dir) {
 
 function confirmSubmit() {
   const byId = Object.fromEntries(st.ballot.candidates.map((c) => [c.id, c]));
-  const summary = picked.map((id, i) => `${i + 1}순위: ${byId[id].name} (${pointsFor(i)}점)`).join('\n');
+  let summary;
+  if (isR1()) {
+    if (allocSum() !== budget()) return;
+    summary = picked.map((id) => `${byId[id].name}: ${alloc[id] || 0}점`).join('\n') + `\n(합계 ${allocSum()}점)`;
+  } else {
+    summary = picked.map((id, i) => `${i + 1}순위: ${byId[id].name} (${r2Points(i)}점)`).join('\n');
+  }
   if (!window.confirm(`아래 내용으로 제출합니다.\n\n${summary}\n\n제출 후에는 수정할 수 없습니다.`)) return;
   submit();
 }
@@ -217,8 +276,11 @@ async function submit() {
   const err = document.getElementById('submitErr');
   btn.disabled = true;
   err.innerHTML = '';
+  const body = isR1()
+    ? { allocations: picked.map((id) => ({ id, points: Number(alloc[id]) || 0 })), voterKey: voterKey() }
+    : { ranking: picked, voterKey: voterKey() };
   try {
-    await api('/api/vote/submit', { body: { round: st.ballot.round, ranking: picked, voterKey: voterKey() } });
+    await api('/api/vote/submit', { body });
     markVoted(st.ballot.round);
     renderDone();
   } catch (e) {
@@ -229,21 +291,17 @@ async function submit() {
 
 function renderDone() {
   const byId = Object.fromEntries(st.ballot.candidates.map((c) => [c.id, c]));
+  const rows = isR1()
+    ? picked.map((id) => `<li class="rankrow"><span class="who">${esc(byId[id].name)}</span><span class="pts">${alloc[id] || 0}점</span></li>`)
+    : picked.map(
+        (id, i) => `<li class="rankrow"><span class="pos">${i + 1}순위</span>
+        <span class="who">${esc(byId[id].name)}</span><span class="pts">${r2Points(i)}점</span></li>`,
+      );
   view.innerHTML = `
     <div class="card">
       <h2>✅ 투표가 완료되었습니다</h2>
       <p class="hint">소중한 한 표 감사합니다. 이 기기에서는 다시 투표할 수 없습니다.</p>
-      <div class="rankpanel">
-        <b>제출한 내용</b>
-        <ol>
-          ${picked
-            .map(
-              (id, i) => `<li class="rankrow"><span class="pos">${i + 1}순위</span>
-              <span class="who">${esc(byId[id].name)}</span><span class="pts">${pointsFor(i)}점</span></li>`,
-            )
-            .join('')}
-        </ol>
-      </div>
+      <div class="rankpanel"><b>제출한 내용</b><ol>${rows.join('')}</ol></div>
       <p class="hint mt">최종 선정된 이름에는 상금이 수여됩니다. 결과는 <a href="/results">결과 페이지</a>에서 공개됩니다.</p>
     </div>`;
 }

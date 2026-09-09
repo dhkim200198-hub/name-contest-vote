@@ -2,39 +2,42 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { tallyRound1, tallyRound2 } from '../lib/tally.js';
 
-test('1차: 순위별 가중치가 정확히 합산된다', () => {
+test('1차: 자유 배분 점수가 합산된다', () => {
   const ids = ['a', 'b', 'c', 'd'];
-  const weights = [60, 30, 10, 0];
   const ballots = [
-    { ranking: ['a', 'b', 'c', 'd'] }, // a60 b30 c10 d0
-    { ranking: ['b', 'a', 'd', 'c'] }, // b60 a30 d10 c0
-    { ranking: ['a', 'c'] }, // a60 c30
+    { allocations: [{ id: 'a', points: 60 }, { id: 'b', points: 30 }, { id: 'c', points: 10 }] },
+    { allocations: [{ id: 'b', points: 100 }] },
+    { allocations: [{ id: 'a', points: 50 }, { id: 'c', points: 50 }] },
   ];
-  const { rows, totalBallots } = tallyRound1(ballots, weights, ids);
+  const { rows, totalBallots } = tallyRound1(ballots, ids);
   assert.equal(totalBallots, 3);
   const score = Object.fromEntries(rows.map((r) => [r.id, r.score]));
-  assert.equal(score.a, 150);
-  assert.equal(score.b, 90);
-  assert.equal(score.c, 40);
-  assert.equal(score.d, 10);
-  assert.equal(rows[0].id, 'a');
+  assert.equal(score.a, 110);
+  assert.equal(score.b, 130);
+  assert.equal(score.c, 60);
+  assert.equal(score.d, 0);
+  assert.equal(rows[0].id, 'b');
   assert.equal(rows[0].rank, 1);
 });
 
-test('1차: 동점이면 1순위표가 많은 쪽이 앞선다', () => {
+test('1차: firsts = 그 표에서 최고 배점을 받은 이름', () => {
   const ids = ['x', 'y'];
-  const weights = [10, 5];
   const ballots = [
-    { ranking: ['x', 'y'] }, // x10 y5
-    { ranking: ['y', 'x'] }, // y10 x5
-    { ranking: ['x'] }, // x10
-    { ranking: ['y'] }, // y10  => x25/1st2, y25/1st2 ... tie
+    { allocations: [{ id: 'x', points: 70 }, { id: 'y', points: 30 }] }, // x top
+    { allocations: [{ id: 'y', points: 60 }, { id: 'x', points: 40 }] }, // y top
+    { allocations: [{ id: 'x', points: 100 }] }, // x top
   ];
-  const { rows } = tallyRound1(ballots, weights, ids);
-  assert.equal(rows[0].score, 25);
-  assert.equal(rows[1].score, 25);
-  assert.equal(rows[0].rank, 1);
-  assert.equal(rows[1].rank, 1); // 완전 동점 → 같은 순위
+  const { rows } = tallyRound1(ballots, ids);
+  const firsts = Object.fromEntries(rows.map((r) => [r.id, r.firsts]));
+  assert.equal(firsts.x, 2);
+  assert.equal(firsts.y, 1);
+});
+
+test('1차: 범위 밖 id 는 무시된다', () => {
+  const { rows } = tallyRound1([{ allocations: [{ id: 'a', points: 40 }, { id: 'ZZ', points: 60 }] }], ['a', 'b']);
+  const score = Object.fromEntries(rows.map((r) => [r.id, r.score]));
+  assert.equal(score.a, 40);
+  assert.equal(score.b, 0);
 });
 
 test('2차: 보르다 점수가 합산되고 1위가 정해진다', () => {
@@ -53,9 +56,14 @@ test('2차: 보르다 점수가 합산되고 1위가 정해진다', () => {
   assert.equal(rows[0].id, 'p');
 });
 
-test('범위 밖 후보 id 는 무시된다', () => {
-  const { rows } = tallyRound2([{ ranking: ['p', 'ZZZ', 'q'] }], [5, 4, 3], ['p', 'q']);
-  const score = Object.fromEntries(rows.map((r) => [r.id, r.score]));
-  assert.equal(score.p, 5);
-  assert.equal(score.q, 3); // ZZZ 가 인덱스 1을 먹고, q 는 인덱스 2(=3점)
+test('2차: 완전 동점이면 같은 순위', () => {
+  const { rows } = tallyRound2(
+    [{ ranking: ['x', 'y'] }, { ranking: ['y', 'x'] }],
+    [10, 5],
+    ['x', 'y'],
+  );
+  assert.equal(rows[0].score, 15);
+  assert.equal(rows[1].score, 15);
+  assert.equal(rows[0].rank, 1);
+  assert.equal(rows[1].rank, 1);
 });

@@ -92,6 +92,25 @@ function validateRanking(ranking, allowedIds, maxLen) {
   return null;
 }
 
+// 1차 자유 배분: allocations = [{id, points}], 합계 = budget, 각 0..budget
+function validateAllocations(allocations, allowedIds, maxPicks, budget) {
+  if (!Array.isArray(allocations) || allocations.length === 0) return '선택된 이름이 없습니다.';
+  if (allocations.length > maxPicks) return `최대 ${maxPicks}개까지 선택할 수 있습니다.`;
+  const allow = new Set(allowedIds);
+  const seen = new Set();
+  let sum = 0;
+  for (const a of allocations) {
+    if (!a || typeof a.id !== 'string' || !allow.has(a.id)) return '선택할 수 없는 이름이 포함되어 있습니다.';
+    if (seen.has(a.id)) return '같은 이름을 중복해서 선택했습니다.';
+    seen.add(a.id);
+    const p = Number(a.points);
+    if (!Number.isInteger(p) || p < 0 || p > budget) return `점수는 0~${budget} 사이 정수여야 합니다.`;
+    sum += p;
+  }
+  if (sum !== budget) return `배분한 점수의 합이 ${budget}점이어야 합니다. (현재 ${sum}점)`;
+  return null;
+}
+
 // 현재 활성 라운드의 투표 용지 정보
 function ballotInfo(d, round) {
   const candidates = votableCandidates(d).map(publicCandidate);
@@ -99,8 +118,8 @@ function ballotInfo(d, round) {
     return {
       round: 1,
       candidates,
-      maxPick: Math.min(d.config.round1.weights.length, candidates.length),
-      points: d.config.round1.weights,
+      maxPick: Math.min(d.config.round1.maxPicks, candidates.length),
+      tokenBudget: d.config.round1.tokenBudget,
     };
   }
   return {
@@ -119,7 +138,7 @@ function buildResults(d) {
 
   const w1 = Number(cfg.round1.scoreWeight) || 1;
   const w2 = Number(cfg.round2.scoreWeight) || 1;
-  const r1 = tallyRound1(d.ballots.round1, cfg.round1.weights, votableIds);
+  const r1 = tallyRound1(d.ballots.round1, votableIds);
   const r2 = tallyRound2(d.ballots.round2, cfg.round2.points, votableIds);
 
   const s1 = Object.fromEntries(r1.rows.map((x) => [x.id, x]));
@@ -157,7 +176,8 @@ function buildResults(d) {
     expectedVoters: expected,
     scoreWeights: { round1: w1, round2: w2 },
     round1: {
-      weights: cfg.round1.weights,
+      tokenBudget: cfg.round1.tokenBudget,
+      maxPicks: cfg.round1.maxPicks,
       totalBallots: r1.totalBallots,
       expectedVoters: expected,
       rows: r1.rows.map(label),
@@ -202,7 +222,6 @@ app.post('/api/vote/submit', (req, res) => {
   const round = roundOf(d.config.phase);
   if (!round) return res.status(409).json({ error: '지금은 진행 중인 투표가 없습니다.' });
 
-  const ranking = req.body?.ranking;
   const voterKey = String(req.body?.voterKey || '').slice(0, 64);
   if (!voterKey) return res.status(400).json({ error: '잘못된 요청입니다. 페이지를 새로고침해 주세요.' });
 
@@ -215,15 +234,25 @@ app.post('/api/vote/submit', (req, res) => {
 
   const allowedIds = votableCandidates(d).map((c) => c.id);
   const info = ballotInfo(d, round);
-  const err = validateRanking(ranking, allowedIds, info.maxPick);
-  if (err) return res.status(400).json({ error: err });
+  let entry;
+  if (round === 1) {
+    const allocations = (req.body?.allocations || []).map((a) => ({ id: a && a.id, points: Number(a && a.points) }));
+    const err = validateAllocations(allocations, allowedIds, info.maxPick, d.config.round1.tokenBudget);
+    if (err) return res.status(400).json({ error: err });
+    entry = { voterKey, allocations, at: new Date().toISOString() };
+  } else {
+    const ranking = req.body?.ranking;
+    const err = validateRanking(ranking, allowedIds, info.maxPick);
+    if (err) return res.status(400).json({ error: err });
+    entry = { voterKey, ranking, at: new Date().toISOString() };
+  }
 
   let stored = false;
   store.mutate((data) => {
     const list = ballotList(data, round);
     if (seatsFull(data, round)) return;
     if (list.some((b) => b.voterKey === voterKey)) return;
-    list.push({ voterKey, ranking, at: new Date().toISOString() });
+    list.push(entry);
     stored = true;
   });
   if (!stored) return res.status(409).json({ error: '방금 마감되었거나 이미 투표하셨습니다.' });
@@ -280,9 +309,11 @@ app.put('/api/admin/config', requireAdmin, (req, res) => {
     }
 
     if (b.round1) {
-      if (Array.isArray(b.round1.weights)) {
-        const w = b.round1.weights.map(Number).filter((n) => Number.isFinite(n) && n >= 0);
-        if (w.length >= 1 && w.length <= 30) c.round1.weights = w;
+      if (Number.isFinite(b.round1.tokenBudget) && b.round1.tokenBudget >= 1) {
+        c.round1.tokenBudget = Math.min(100000, Math.round(b.round1.tokenBudget));
+      }
+      if (Number.isFinite(b.round1.maxPicks) && b.round1.maxPicks >= 1) {
+        c.round1.maxPicks = Math.min(30, Math.round(b.round1.maxPicks));
       }
       if (Number.isFinite(b.round1.scoreWeight) && b.round1.scoreWeight >= 0) {
         c.round1.scoreWeight = b.round1.scoreWeight;

@@ -175,12 +175,13 @@ function renderSettings(root) {
         </div>
       </label>
       <div class="grid-2">
-        <label class="field"><span>1차 순위별 배점 (쉼표 구분 · 개수 = 선택 가능 수)</span>
-          <input type="text" id="w1" value="${c.round1.weights.join(', ')}" /></label>
-        <label class="field"><span>2차 순위별 점수 (쉼표 구분)</span>
-          <input type="text" id="p2" value="${c.round2.points.join(', ')}" /></label>
+        <label class="field"><span>1차 토큰(총점)</span>
+          <input type="number" id="tb1" value="${c.round1.tokenBudget ?? 100}" min="1" step="10" /></label>
+        <label class="field"><span>1차 최대 선택 이름 수</span>
+          <input type="number" id="mp1" value="${c.round1.maxPicks ?? 5}" min="1" max="30" /></label>
       </div>
-      <p class="hint" id="w1sum"></p>
+      <label class="field"><span>2차 순위별 점수 (쉼표 구분 · 개수 = 선택 가능 수)</span>
+        <input type="text" id="p2" value="${c.round2.points.join(', ')}" /></label>
       <div class="grid-2">
         <label class="field"><span>종합 점수에 1차 반영 배율</span>
           <input type="number" id="sw1" value="${c.round1.scoreWeight ?? 1}" min="0" step="0.1" /></label>
@@ -189,9 +190,14 @@ function renderSettings(root) {
       </div>
       <button class="btn-primary" id="saveVote">방식 저장</button>
       <p class="hint mt">
-        1차·2차 모두 이름 전체를 대상으로 투표하고, <b>최종 순위 = (1차 점수 × 1차 배율) + (2차 점수 × 2차 배율)</b> 로 합산합니다.<br />
-        기본값 — 이름 4개 / 1차 순위별 60·30·10·0점 / 2차 순위별 5·4·3·2·1점 / 배율 1 : 1.
-        <br />※ 1차 배점 합(100)이 2차(≤14)보다 크므로, 두 라운드를 대등하게 보려면 예: 1차 배율 0.14 정도로 낮추세요.
+        1차·2차 모두 이름 전체를 대상으로 투표합니다.
+        <b>1차</b>: 토큰 ${c.round1.tokenBudget ?? 100}점을 최대 ${c.round1.maxPicks ?? 5}개 이름에 0~${c.round1.tokenBudget ?? 100}점 자유 배분(합계 = 토큰).
+        <b>2차</b>: 순위별 고정 점수.
+        <b>최종 순위 = (1차 점수 × 1차 배율) + (2차 점수 × 2차 배율)</b>.<br />
+        ※ 1차 총점(${c.round1.tokenBudget ?? 100})이 2차보다 크므로, 두 라운드를 대등하게 보려면 1차 배율을 낮추세요
+        (예: 2차 최대 ${c.round2.points.slice(0, c.round1.maxPicks ?? 5).reduce((a, b) => a + b, 0)}점 → 1차 배율 ≈ ${(
+          c.round2.points.slice(0, c.round1.maxPicks ?? 5).reduce((a, b) => a + b, 0) / (c.round1.tokenBudget ?? 100)
+        ).toFixed(2)}).
       </p>
     </div>
 
@@ -204,13 +210,6 @@ function renderSettings(root) {
         <button class="btn-danger" data-reset="all">전체 초기화</button>
       </div>
     </div>`;
-
-  const sumW1 = () => {
-    const arr = parseNums(document.getElementById('w1').value);
-    document.getElementById('w1sum').textContent = `슬롯 ${arr.length}개 · 합계 ${arr.reduce((a, b) => a + b, 0)}점`;
-  };
-  document.getElementById('w1').addEventListener('input', sumW1);
-  sumW1();
 
   root.querySelectorAll('[data-phase]').forEach((b) =>
     b.addEventListener('click', async () => {
@@ -265,13 +264,14 @@ function renderSettings(root) {
   });
 
   document.getElementById('saveVote').addEventListener('click', async () => {
-    const w = parseNums(document.getElementById('w1').value);
+    const tb = Number(document.getElementById('tb1').value);
+    const mp = Number(document.getElementById('mp1').value);
     const p = parseNums(document.getElementById('p2').value);
-    if (!w.length || !p.length) return toast('배점을 확인하세요.', 'err');
+    if (!(tb >= 1) || !(mp >= 1) || !p.length) return toast('값을 확인하세요.', 'err');
     await authed('/api/admin/config', {
       method: 'PUT',
       body: {
-        round1: { weights: w, scoreWeight: Number(document.getElementById('sw1').value) },
+        round1: { tokenBudget: tb, maxPicks: mp, scoreWeight: Number(document.getElementById('sw1').value) },
         round2: { points: p, scoreWeight: Number(document.getElementById('sw2').value) },
       },
     });
@@ -353,15 +353,21 @@ function renderCandidates(root) {
 /* 결과 탭                                                             */
 /* ------------------------------------------------------------------ */
 function scoreTable(section, extraHead = '', extraCell = () => '') {
+  const scheme =
+    section.tokenBudget != null
+      ? `토큰 ${section.tokenBudget}점 / 최대 ${section.maxPicks}개`
+      : (section.points || []).join(' · ') + '점';
   return `
     <div class="grid-2">
       <div class="stat"><div class="k">투표 수</div><div class="v">${section.totalBallots}${
         section.expectedVoters ? ` / ${section.expectedVoters}` : ''
       }</div></div>
-      <div class="stat"><div class="k">배점</div><div class="v" style="font-size:1rem">${(section.weights || section.points).join(' · ')}</div></div>
+      <div class="stat"><div class="k">방식</div><div class="v" style="font-size:1rem">${scheme}</div></div>
     </div>
     <div class="table-scroll mt">
-      <table class="data"><thead><tr><th>순위</th><th>이름</th><th>영문</th>${extraHead}<th class="num">점수</th><th class="num">1순위표</th></tr></thead>
+      <table class="data"><thead><tr><th>순위</th><th>이름</th><th>영문</th>${extraHead}<th class="num">점수</th><th class="num">${
+        section.tokenBudget != null ? '최고배점' : '1순위표'
+      }</th></tr></thead>
       <tbody>${section.rows
         .map(
           (x) => `<tr class="${x.rank === 1 ? 'top1' : ''}"><td class="num">${x.rank}</td><td>${esc(x.name)}</td>

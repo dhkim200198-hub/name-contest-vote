@@ -65,7 +65,10 @@ function loginRecord(ip) {
 /* 공통 헬퍼                                                            */
 /* ------------------------------------------------------------------ */
 function votableCandidates(d) {
-  return d.candidates.filter((c) => c.name && c.name.trim()).sort((a, b) => a.order - b.order);
+  // 이름이 있고, 상표 검토에서 '중복있음'으로 표시되지 않은 후보만 투표 대상
+  return d.candidates
+    .filter((c) => c.name && c.name.trim() && c.trademark !== '중복있음')
+    .sort((a, b) => a.order - b.order);
 }
 function publicCandidate(c) {
   return { id: c.id, name: c.name, kind: c.kind, english: c.english, description: c.description };
@@ -440,7 +443,7 @@ app.put('/api/admin/phase', requireAdmin, (req, res) => {
   const d = store.getData();
   if (target === 'round1_open' || target === 'round2_open') {
     if (votableCandidates(d).length < 2) {
-      return res.status(400).json({ error: '이름이 입력된 후보가 2개 이상 필요합니다.' });
+      return res.status(400).json({ error: '투표 가능한 이름(비어있음·상표 중복있음 제외)이 2개 이상 필요합니다.' });
     }
   }
   store.mutate((data) => {

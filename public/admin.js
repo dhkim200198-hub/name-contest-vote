@@ -322,17 +322,24 @@ function renderCandidates(root) {
       <p class="hint">
         조건 — ① 순수한글 또는 한자 기반 이름 ② (순수한글의 경우) 영문 표기가 예쁠 것
         ③ 상표 검색 시 소프트웨어 분야 중복이 없을 것.<br />
-        <b>설명 칸</b>에 "이 이름이 어떤 시스템/의미인지"를 대표님이 직접 채워 주세요. 여기서 저장하면 투표 페이지에 바로 반영됩니다. 이름이 비면 투표 후보에서 제외됩니다.<br />
+        <b>설명 칸</b>에 "이 이름이 어떤 시스템/의미인지"를 대표님이 직접 채워 주세요. 여기서 저장하면 투표 페이지에 바로 반영됩니다.<br />
+        <b>상표 검토를 "중복있음"으로 저장하면 그 이름은 투표 후보에서 자동 제외</b>됩니다(이름이 빈 칸도 제외).
+        각 이름 옆 <b>KIPRIS</b>·<b>웹검색</b> 링크로 확인 후 표시하세요.<br />
         칸 개수는 <b>설정 → 투표 방식 설정</b>에서 조정할 수 있습니다(준비 단계에서만).
       </p>
       <div id="cands"></div>
       <button class="btn-primary btn-lg" id="saveCands">후보 전체 저장</button>
     </div>`;
 
+  const kipris = 'https://www.kipris.or.kr/khome/search/searchResult.do?tab=trademark';
+  const web = (q) => `https://www.google.com/search?q=${encodeURIComponent(q + ' 상표 trademark 소프트웨어')}`;
+
   document.getElementById('cands').innerHTML = D.candidates
-    .map(
-      (c, i) => `
-    <div class="adm-cand" data-id="${c.id}">
+    .map((c, i) => {
+      const excluded = c.name && c.name.trim() && c.trademark === '중복있음';
+      const q = [c.name, c.english].filter(Boolean).join(' ');
+      return `
+    <div class="adm-cand" data-id="${c.id}" style="${excluded ? 'border-color:var(--danger)' : ''}">
       <div class="row1">
         <div class="idx">${i + 1}</div>
         <input type="text" data-f="name" placeholder="이름" value="${esc(c.name)}" />
@@ -343,9 +350,15 @@ function renderCandidates(root) {
         <input type="text" data-f="proposer" placeholder="제안자 (선택)" value="${esc(c.proposer)}" />
         <select data-f="trademark">${TM.map((k) => `<option ${c.trademark === k ? 'selected' : ''}>상표: ${k}</option>`).join('')}</select>
       </div>
+      <div style="font-size:.82rem;margin:2px 0 6px">
+        상표 확인:
+        <a href="${kipris}" target="_blank" rel="noopener">KIPRIS 상표검색</a> ·
+        <a href="${web(q || '')}" target="_blank" rel="noopener">웹검색</a>
+        ${excluded ? '<span class="tag no" style="margin-left:8px">투표 제외됨 (중복있음)</span>' : ''}
+      </div>
       <textarea data-f="description" placeholder="설명 — 어떤 시스템/의미인지 (투표 화면에 표시됩니다)">${esc(c.description)}</textarea>
-    </div>`,
-    )
+    </div>`;
+    })
     .join('');
 
   // select 옵션 텍스트에 "상표: " 프리픽스를 넣었으니 저장 시 정리

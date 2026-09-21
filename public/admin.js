@@ -165,14 +165,7 @@ function renderGlobal(root) {
 
     <div class="card">
       <h2>이름 제안</h2>
-      <label class="field" style="max-width:320px">
-        <span>이름 제안 받기</span>
-        <select id="submissionsOpen">
-          <option value="true" ${c.submissionsOpen ? 'selected' : ''}>열림 (준비 단계 항목에서 제안 가능)</option>
-          <option value="false" ${!c.submissionsOpen ? 'selected' : ''}>닫힘</option>
-        </select>
-      </label>
-      <p class="hint">항목별로 1차 투표를 시작하면 <b>그 항목의 이름 제안만 자동으로 닫힙니다</b>(다른 준비 단계 항목은 계속 제안을 받습니다). 여기 스위치는 전체 항목의 이름 제안을 한번에 미리 닫거나 다시 여는 수동 제어용입니다.</p>
+      <p class="hint">이름 제안은 <b>각 항목이 준비 단계일 때 자동으로 열려</b> 있고, 그 항목의 1차 투표가 시작되면 <b>그 항목만 자동으로 닫힙니다</b>. 다른 준비 단계 항목은 영향받지 않으며, 별도로 켜고 끌 필요가 없습니다.</p>
       <label class="field" style="max-width:220px"><span>1인당 항목당 최대 제안 개수</span>
         <div class="btn-row">
           <input type="number" id="maxProp" value="${c.maxProposalsPerCategory ?? 2}" min="1" max="30" style="width:80px" />
@@ -220,12 +213,6 @@ function renderGlobal(root) {
       renderTab();
     }),
   );
-
-  document.getElementById('submissionsOpen').addEventListener('change', async (e) => {
-    await authed('/api/admin/config', { method: 'PUT', body: { submissionsOpen: e.target.value === 'true' } });
-    await refresh();
-    toast('이름 제안 설정을 저장했습니다.');
-  });
 
   document.getElementById('saveMaxProp').addEventListener('click', async () => {
     await authed('/api/admin/config', {

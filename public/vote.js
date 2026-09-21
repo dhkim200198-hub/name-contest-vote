@@ -87,9 +87,7 @@ async function goGrid() {
 
 function actionFor(cat) {
   if (cat.phase === 'prep') {
-    return st.submissionsOpen
-      ? { label: '이름 제안하기', go: () => goProposeIntro(cat.id) }
-      : { label: '이름 제안 마감', disabled: true };
+    return { label: '이름 제안하기', go: () => goProposeIntro(cat.id) };
   }
   if (cat.phase === 'round1_open' || cat.phase === 'round2_open') {
     if (cat.full) return { label: `${cat.activeRound}차 투표 마감`, disabled: true };

@@ -268,7 +268,6 @@ app.get('/api/state', (req, res) => {
     prize: cfg.prize,
     expectedVoters: Number(cfg.expectedVoters) || 0,
     useVoterNumbers: numberMode(d),
-    submissionsOpen: !!cfg.submissionsOpen,
     maxProposalsPerCategory: Number(cfg.maxProposalsPerCategory) || 2,
     categories: d.categories.map(categorySummary),
   });
@@ -307,8 +306,6 @@ app.post('/api/propose/check', (req, res) => {
 
 app.post('/api/propose', (req, res) => {
   const d = store.getData();
-  if (!d.config.submissionsOpen) return res.status(409).json({ error: '이름 제안이 마감되었습니다.' });
-
   const cat = store.getCategory(req.body?.categoryId);
   if (!cat) return res.status(404).json({ error: '알 수 없는 항목입니다.' });
   if (cat.phase !== 'prep') {
@@ -333,7 +330,7 @@ app.post('/api/propose', (req, res) => {
   let error = null;
   store.mutate((data) => {
     const c = data.categories.find((x) => x.id === cat.id);
-    if (!data.config.submissionsOpen || c.phase !== 'prep') {
+    if (c.phase !== 'prep') {
       error = '이름 제안이 마감되었습니다.';
       return;
     }
@@ -357,7 +354,7 @@ app.put('/api/propose', (req, res) => {
   const d = store.getData();
   const cat = store.getCategory(req.body?.categoryId);
   if (!cat) return res.status(404).json({ error: '알 수 없는 항목입니다.' });
-  if (!d.config.submissionsOpen || cat.phase !== 'prep') {
+  if (cat.phase !== 'prep') {
     return res.status(409).json({ error: '투표가 시작되어 더 이상 수정할 수 없습니다.' });
   }
 
@@ -378,7 +375,7 @@ app.put('/api/propose', (req, res) => {
   let error = null;
   store.mutate((data) => {
     const c = data.categories.find((x) => x.id === cat.id);
-    if (!data.config.submissionsOpen || c.phase !== 'prep') {
+    if (c.phase !== 'prep') {
       error = '투표가 시작되어 더 이상 수정할 수 없습니다.';
       return;
     }
@@ -409,7 +406,7 @@ app.delete('/api/propose', (req, res) => {
   const d = store.getData();
   const cat = store.getCategory(req.body?.categoryId);
   if (!cat) return res.status(404).json({ error: '알 수 없는 항목입니다.' });
-  if (!d.config.submissionsOpen || cat.phase !== 'prep') {
+  if (cat.phase !== 'prep') {
     return res.status(409).json({ error: '투표가 시작되어 더 이상 수정할 수 없습니다.' });
   }
 
@@ -421,7 +418,7 @@ app.delete('/api/propose', (req, res) => {
   let error = null;
   store.mutate((data) => {
     const c = data.categories.find((x) => x.id === cat.id);
-    if (!data.config.submissionsOpen || c.phase !== 'prep') {
+    if (c.phase !== 'prep') {
       error = '투표가 시작되어 더 이상 수정할 수 없습니다.';
       return;
     }
@@ -562,7 +559,6 @@ app.put('/api/admin/config', requireAdmin, (req, res) => {
     if (typeof b.subtitle === 'string') c.subtitle = b.subtitle.slice(0, 200);
     if (Number.isFinite(b.prize) && b.prize >= 0) c.prize = Math.round(b.prize);
     if (typeof b.useVoterNumbers === 'boolean') c.useVoterNumbers = b.useVoterNumbers;
-    if (typeof b.submissionsOpen === 'boolean') c.submissionsOpen = b.submissionsOpen;
     if (Number.isFinite(b.expectedVoters) && b.expectedVoters >= 0) {
       c.expectedVoters = Math.min(100000, Math.round(b.expectedVoters));
     }
@@ -626,11 +622,9 @@ app.put('/api/admin/category/:id/phase', requireAdmin, (req, res) => {
   store.mutate((data) => {
     const c = data.categories.find((x) => x.id === req.params.id);
     c.phase = target;
-    // 이 항목이 준비 단계를 벗어나면 이 항목의 이름 제안만 마감된다(다른 항목엔 영향 없음).
-    // 전체 제안 마감 여부(config.submissionsOpen)는 관리자가 "전체 설정"에서 별도로 제어한다.
+    // 이 항목이 준비 단계를 벗어나면 이 항목의 이름 제안만 자동으로 마감된다(다른 항목엔 영향 없음).
   });
-  const d = store.getData();
-  res.json({ ok: true, phase: target, submissionsOpen: d.config.submissionsOpen });
+  res.json({ ok: true, phase: target });
 });
 
 app.post('/api/admin/category/:id/candidates', requireAdmin, (req, res) => {

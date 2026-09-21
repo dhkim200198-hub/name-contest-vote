@@ -68,7 +68,7 @@ function votableCandidates(cat) {
   return cat.candidates.filter((c) => c.name && c.name.trim() && !c.hidden);
 }
 function publicCandidate(c) {
-  return { id: c.id, name: c.name, kind: c.kind, english: c.english };
+  return { id: c.id, name: c.name, kind: c.kind, english: c.english, description: c.description || '' };
 }
 function roundOf(phase) {
   if (phase === 'round1_open') return 1;
@@ -133,7 +133,7 @@ function ballotInfo(cat, round) {
 function buildResults(cat) {
   const cfg = store.getData().config;
   const cand = (id) => cat.candidates.find((c) => c.id === id) || {};
-  const label = (x) => ({ ...x, name: cand(x.id).name || x.id, english: cand(x.id).english || '' });
+  const label = (x) => ({ ...x, name: cand(x.id).name || x.id, english: cand(x.id).english || '', description: cand(x.id).description || '' });
   const votableIds = votableCandidates(cat).map((c) => c.id);
 
   // 종합 반영 비율 (기본 1 : 1). 각 라운드를 100점 만점으로 환산한 뒤 이 비율로 합산한다.
@@ -250,7 +250,7 @@ function buildMine(d, n) {
     const list = cat.candidates.filter((c) => c.proposer === n);
     mine[cat.id] = {
       count: list.length,
-      names: list.map((c) => ({ id: c.id, name: c.name, kind: c.kind, english: c.english })),
+      names: list.map((c) => ({ id: c.id, name: c.name, kind: c.kind, english: c.english, description: c.description || '' })),
     };
   }
   return mine;
@@ -323,7 +323,10 @@ app.post('/api/propose', (req, res) => {
   const name = String(req.body?.name || '').trim().slice(0, 60);
   const kind = KINDS.has(req.body?.kind) ? req.body.kind : '순수한글';
   const english = String(req.body?.english || '').trim().slice(0, 80);
+  const description = String(req.body?.description || '').trim().slice(0, 200);
   if (!name) return res.status(400).json({ error: '이름을 입력하세요.' });
+  if (!english) return res.status(400).json({ error: '영문 표기를 입력하세요.' });
+  if (!description) return res.status(400).json({ error: '이름에 대한 간단한 설명을 입력하세요.' });
 
   const max = Number(d.config.maxProposalsPerCategory) || 2;
 
@@ -343,7 +346,7 @@ app.post('/api/propose', (req, res) => {
       error = '이미 제안된 이름입니다.';
       return;
     }
-    c.candidates.push(store.makeCandidate({ name, kind, english, proposer: n }));
+    c.candidates.push(store.makeCandidate({ name, kind, english, description, proposer: n }));
   });
   if (error) return res.status(409).json({ error });
 
@@ -367,7 +370,10 @@ app.put('/api/propose', (req, res) => {
   const name = String(req.body?.name || '').trim().slice(0, 60);
   const kind = KINDS.has(req.body?.kind) ? req.body.kind : '순수한글';
   const english = String(req.body?.english || '').trim().slice(0, 80);
+  const description = String(req.body?.description || '').trim().slice(0, 200);
   if (!name) return res.status(400).json({ error: '이름을 입력하세요.' });
+  if (!english) return res.status(400).json({ error: '영문 표기를 입력하세요.' });
+  if (!description) return res.status(400).json({ error: '이름에 대한 간단한 설명을 입력하세요.' });
 
   let error = null;
   store.mutate((data) => {
@@ -392,6 +398,7 @@ app.put('/api/propose', (req, res) => {
     target.name = name;
     target.kind = kind;
     target.english = english;
+    target.description = description;
   });
   if (error) return res.status(409).json({ error });
 
@@ -637,13 +644,14 @@ app.post('/api/admin/category/:id/candidates', requireAdmin, (req, res) => {
   if (!name) return res.status(400).json({ error: '이름을 입력하세요.' });
   const kind = KINDS.has(req.body?.kind) ? req.body.kind : '순수한글';
   const english = String(req.body?.english || '').trim().slice(0, 80);
+  const description = String(req.body?.description || '').trim().slice(0, 200);
   const proposerRaw = Number(req.body?.proposer);
   const proposer = Number.isInteger(proposerRaw) ? proposerRaw : null;
 
   let created = null;
   store.mutate((data) => {
     const c = data.categories.find((x) => x.id === req.params.id);
-    created = store.makeCandidate({ name, kind, english, proposer });
+    created = store.makeCandidate({ name, kind, english, description, proposer });
     c.candidates.push(created);
   });
   res.json({ ok: true, candidate: created, category: store.getCategory(req.params.id) });
@@ -664,6 +672,7 @@ app.put('/api/admin/category/:id/candidates', requireAdmin, (req, res) => {
       if (typeof inp.name === 'string' && inp.name.trim()) cand.name = inp.name.trim().slice(0, 60);
       if (KINDS.has(inp.kind)) cand.kind = inp.kind;
       if (typeof inp.english === 'string') cand.english = inp.english.slice(0, 80);
+      if (typeof inp.description === 'string') cand.description = inp.description.slice(0, 200);
       if (typeof inp.hidden === 'boolean') cand.hidden = inp.hidden;
     }
   });

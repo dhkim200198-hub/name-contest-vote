@@ -407,6 +407,9 @@ function candidatesCard(cat) {
           <select id="newKind" style="flex:0 1 110px">${KINDS.map((k) => `<option>${k}</option>`).join('')}</select>
           <input type="text" id="newEnglish" placeholder="영문 표기" style="flex:1 1 140px" />
         </div>
+        <div class="btn-row" style="margin-bottom:8px">
+          <input type="text" id="newDesc" placeholder="이름 설명 (한두 줄, 선택)" style="flex:1 1 260px" />
+        </div>
         <div class="btn-row">
           <input type="number" id="newProposer" placeholder="제안자 번호 (선택)" style="flex:0 1 160px" />
           <button id="addCand">추가</button>
@@ -425,6 +428,7 @@ function wireCandidatesCard(root, cat) {
         <select data-f="kind">${KINDS.map((k) => `<option ${c.kind === k ? 'selected' : ''}>${k}</option>`).join('')}</select>
         <input type="text" data-f="english" placeholder="영문 표기" value="${esc(c.english)}" />
       </div>
+      <input type="text" data-f="description" placeholder="이름 설명 (한두 줄)" value="${esc(c.description || '')}" style="width:100%;margin-top:6px" />
       <div class="row2">
         <span class="tag">제안자 ${c.proposer != null ? `${c.proposer}번` : '—'}</span>
         <label style="display:flex;align-items:center;gap:4px"><input type="checkbox" data-f="hidden" ${c.hidden ? 'checked' : ''} /> 투표 대상에서 숨김</label>
@@ -442,6 +446,7 @@ function wireCandidatesCard(root, cat) {
         name: get('name').value.trim(),
         kind: get('kind').value,
         english: get('english').value.trim(),
+        description: get('description').value.trim(),
         hidden: get('hidden').checked,
       };
     });
@@ -468,6 +473,7 @@ function wireCandidatesCard(root, cat) {
         name,
         kind: document.getElementById('newKind').value,
         english: document.getElementById('newEnglish').value.trim(),
+        description: document.getElementById('newDesc').value.trim(),
         proposer: document.getElementById('newProposer').value ? Number(document.getElementById('newProposer').value) : null,
       },
     });

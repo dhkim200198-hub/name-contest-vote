@@ -108,6 +108,9 @@ function renderGrid() {
         투표가 시작된 항목은 1차·2차 투표에 참여할 수 있습니다.
         제안하는 이름은 <b>순수한글 또는 한자(漢字) 기반</b>이어야 하며, 순수한글인 경우 영문 표기가 자연스러운 것이 좋습니다.
       </p>
+      <p class="hint">
+        📅 <b>이름 접수는 9월 30일까지</b> 마감하며, <b>10월 1일 전체 인원이 모여 1차·2차 투표를 진행</b>합니다.
+      </p>
     </div>
     <div class="catgrid">
       ${st.categories
@@ -161,6 +164,9 @@ function renderProposeIntro(categoryId) {
         <b>1차 투표가 시작되면 전체 4개 항목의 이름 제안이 한꺼번에 마감</b>되고, 그 뒤로는 제안된 이름들로만 투표가 진행됩니다.
         제안하는 이름은 <b>순수한글 또는 한자(漢字) 기반</b>이어야 하며, 순수한글인 경우 영문 표기가 자연스러운 것이 좋습니다.
         상표(商標) 중복 여부는 <b>제안하는 본인이 미리 확인</b>해 주세요.
+      </p>
+      <p class="hint">
+        📅 <b>이름 접수는 9월 30일까지</b> 마감하며, <b>10월 1일 전체 인원이 모여 1차·2차 투표를 진행</b>합니다.
       </p>
       ${trademarkLinksHtml(null, 'introKipris', 'introWebSearch')}
     </div>
@@ -253,8 +259,9 @@ function renderProposeForm(categoryId) {
                               <option ${n.kind === '한자' ? 'selected' : ''}>한자</option>
                             </select>
                           </label>
-                          <label class="field"><span>영문 표기 (선택)</span><input type="text" id="eEng" maxlength="80" value="${esc(n.english || '')}" /></label>
+                          <label class="field"><span>영문 표기 (필수)</span><input type="text" id="eEng" maxlength="80" value="${esc(n.english || '')}" /></label>
                         </div>
+                        <label class="field"><span>이름 설명 (한두 줄, 필수)</span><textarea id="eDesc" maxlength="200" rows="2">${esc(n.description || '')}</textarea></label>
                         <div id="eErr"></div>
                         <div class="btn-row mt">
                           <button class="btn-primary" id="eSave">저장</button>
@@ -262,9 +269,12 @@ function renderProposeForm(categoryId) {
                         </div>
                       </div>
                     </li>`
-                  : `<li class="rankrow">
-                      <span class="who">${esc(n.name)}</span>
-                      <span class="tag ${n.kind === '한자' ? 'hanja' : 'hangul'}">${esc(n.kind)}</span>
+                  : `<li class="rankrow" style="align-items:flex-start">
+                      <div style="flex:1">
+                        <div><span class="who">${esc(n.name)}</span> <span class="tag ${n.kind === '한자' ? 'hanja' : 'hangul'}">${esc(n.kind)}</span></div>
+                        ${n.english ? `<div class="muted">${esc(n.english)}</div>` : ''}
+                        ${n.description ? `<div class="muted">${esc(n.description)}</div>` : ''}
+                      </div>
                       <button data-edit="${n.id}">수정</button>
                       <button class="btn-danger" data-del="${n.id}">삭제</button>
                     </li>`,
@@ -283,8 +293,9 @@ function renderProposeForm(categoryId) {
           <label class="field"><span>구분</span>
             <select id="pKind"><option>순수한글</option><option>한자</option></select>
           </label>
-          <label class="field"><span>영문 표기 (선택)</span><input type="text" id="pEng" maxlength="80" placeholder="예: Nuri" /></label>
+          <label class="field"><span>영문 표기 (필수)</span><input type="text" id="pEng" maxlength="80" placeholder="예: Nuri" /></label>
         </div>
+        <label class="field"><span>이름 설명 (한두 줄, 필수)</span><textarea id="pDesc" maxlength="200" rows="2" placeholder="이 이름을 제안한 이유나 의미를 간단히 적어주세요"></textarea></label>
         <div id="pErr"></div>
         <button class="btn-primary btn-lg btn-block" id="pSubmit">이 이름 제안하기</button>
       </div>`
@@ -307,15 +318,24 @@ function renderProposeForm(categoryId) {
     const name = document.getElementById('pName').value.trim();
     const kind = document.getElementById('pKind').value;
     const english = document.getElementById('pEng').value.trim();
+    const description = document.getElementById('pDesc').value.trim();
     const errBox = document.getElementById('pErr');
     if (!name) {
       errBox.innerHTML = `<div class="notice err">이름을 입력하세요.</div>`;
       return;
     }
+    if (!english) {
+      errBox.innerHTML = `<div class="notice err">영문 표기를 입력하세요.</div>`;
+      return;
+    }
+    if (!description) {
+      errBox.innerHTML = `<div class="notice err">이름에 대한 간단한 설명을 입력하세요.</div>`;
+      return;
+    }
     submitBtn.disabled = true;
     errBox.innerHTML = '';
     try {
-      const r = await api('/api/propose', { body: { voterNumber: proposeNumber, categoryId, name, kind, english } });
+      const r = await api('/api/propose', { body: { voterNumber: proposeNumber, categoryId, name, kind, english, description } });
       proposeMine = r.mine;
       renderProposeForm(categoryId);
     } catch (e) {
@@ -360,9 +380,18 @@ function renderProposeForm(categoryId) {
     const name = document.getElementById('eName').value.trim();
     const kind = document.getElementById('eKind').value;
     const english = document.getElementById('eEng').value.trim();
+    const description = document.getElementById('eDesc').value.trim();
     const errBox = document.getElementById('eErr');
     if (!name) {
       errBox.innerHTML = `<div class="notice err">이름을 입력하세요.</div>`;
+      return;
+    }
+    if (!english) {
+      errBox.innerHTML = `<div class="notice err">영문 표기를 입력하세요.</div>`;
+      return;
+    }
+    if (!description) {
+      errBox.innerHTML = `<div class="notice err">이름에 대한 간단한 설명을 입력하세요.</div>`;
       return;
     }
     const saveBtn = document.getElementById('eSave');
@@ -371,7 +400,7 @@ function renderProposeForm(categoryId) {
     try {
       const r = await api('/api/propose', {
         method: 'PUT',
-        body: { voterNumber: proposeNumber, categoryId, candidateId: editingCandidateId, name, kind, english },
+        body: { voterNumber: proposeNumber, categoryId, candidateId: editingCandidateId, name, kind, english, description },
       });
       proposeMine = r.mine;
       editingCandidateId = null;
@@ -616,6 +645,7 @@ function paint() {
         <div>
           <span class="name">${esc(c.name)}</span>${c.english ? `<span class="eng">${esc(c.english)}</span>` : ''}
           <span class="tag ${c.kind === '한자' ? 'hanja' : 'hangul'}">${esc(c.kind)}</span>
+          ${c.description ? `<div class="muted">${esc(c.description)}</div>` : ''}
         </div>
         <div class="right">
           ${

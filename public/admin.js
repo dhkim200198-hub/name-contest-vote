@@ -172,7 +172,7 @@ function renderGlobal(root) {
           <option value="false" ${!c.submissionsOpen ? 'selected' : ''}>닫힘</option>
         </select>
       </label>
-      <p class="hint">아무 항목이든 1차 투표를 시작하면 <b>전체 항목의 이름 제안이 자동으로 닫힙니다.</b> 여기서 수동으로 미리 닫거나 다시 열 수도 있습니다.</p>
+      <p class="hint">항목별로 1차 투표를 시작하면 <b>그 항목의 이름 제안만 자동으로 닫힙니다</b>(다른 준비 단계 항목은 계속 제안을 받습니다). 여기 스위치는 전체 항목의 이름 제안을 한번에 미리 닫거나 다시 여는 수동 제어용입니다.</p>
       <label class="field" style="max-width:220px"><span>1인당 항목당 최대 제안 개수</span>
         <div class="btn-row">
           <input type="number" id="maxProp" value="${c.maxProposalsPerCategory ?? 2}" min="1" max="30" style="width:80px" />
@@ -317,7 +317,7 @@ function phaseCard(cat) {
       <h2>단계 진행</h2>
       <p class="hint">현재: <b>${PHASES.find((p) => p[0] === cat.phase)?.[1] || cat.phase}</b> ·
         1차 ${cat.ballotCounts.round1}표 / 2차 ${cat.ballotCounts.round2}표.
-        (이 항목이 준비 단계를 벗어나면 <b>전체 항목의 이름 제안이 동시에 마감</b>됩니다.)</p>
+        (이 항목이 준비 단계를 벗어나면 <b>이 항목의 이름 제안만 마감</b>됩니다. 다른 항목은 영향받지 않습니다.)</p>
       <div class="phasebar">
         ${PHASES.map(([k, l]) => `<button data-phase="${k}" class="${cat.phase === k ? 'active' : ''}">${l}</button>`).join('')}
       </div>

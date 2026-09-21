@@ -626,8 +626,8 @@ app.put('/api/admin/category/:id/phase', requireAdmin, (req, res) => {
   store.mutate((data) => {
     const c = data.categories.find((x) => x.id === req.params.id);
     c.phase = target;
-    // 어느 항목이든 준비 단계를 벗어나면 전체 항목의 이름 제안을 동시에 마감한다.
-    if (target !== 'prep') data.config.submissionsOpen = false;
+    // 이 항목이 준비 단계를 벗어나면 이 항목의 이름 제안만 마감된다(다른 항목엔 영향 없음).
+    // 전체 제안 마감 여부(config.submissionsOpen)는 관리자가 "전체 설정"에서 별도로 제어한다.
   });
   const d = store.getData();
   res.json({ ok: true, phase: target, submissionsOpen: d.config.submissionsOpen });

@@ -317,7 +317,7 @@ function phaseCard(cat) {
       <h2>단계 진행</h2>
       <p class="hint">현재: <b>${PHASES.find((p) => p[0] === cat.phase)?.[1] || cat.phase}</b> ·
         1차 ${cat.ballotCounts.round1}표 / 2차 ${cat.ballotCounts.round2}표.
-        (1차·2차 시작은 이름이 2개 이상 있어야 합니다. 이 항목이 준비 단계를 벗어나면 <b>전체 항목의 이름 제안이 동시에 마감</b>됩니다.)</p>
+        (이 항목이 준비 단계를 벗어나면 <b>전체 항목의 이름 제안이 동시에 마감</b>됩니다.)</p>
       <div class="phasebar">
         ${PHASES.map(([k, l]) => `<button data-phase="${k}" class="${cat.phase === k ? 'active' : ''}">${l}</button>`).join('')}
       </div>

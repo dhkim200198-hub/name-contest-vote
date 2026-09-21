@@ -623,9 +623,6 @@ app.put('/api/admin/category/:id/phase', requireAdmin, (req, res) => {
   if (!PHASES.includes(target)) return res.status(400).json({ error: '알 수 없는 단계입니다.' });
   const cat = store.getCategory(req.params.id);
   if (!cat) return res.status(404).json({ error: '알 수 없는 항목입니다.' });
-  if ((target === 'round1_open' || target === 'round2_open') && votableCandidates(cat).length < 2) {
-    return res.status(400).json({ error: '투표 가능한 이름(비어있음 제외)이 2개 이상 필요합니다.' });
-  }
   store.mutate((data) => {
     const c = data.categories.find((x) => x.id === req.params.id);
     c.phase = target;

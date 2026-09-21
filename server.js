@@ -350,6 +350,83 @@ app.post('/api/propose', (req, res) => {
   res.json({ ok: true, mine: buildMine(store.getData(), n) });
 });
 
+app.put('/api/propose', (req, res) => {
+  const d = store.getData();
+  const cat = store.getCategory(req.body?.categoryId);
+  if (!cat) return res.status(404).json({ error: '알 수 없는 항목입니다.' });
+  if (!d.config.submissionsOpen || cat.phase !== 'prep') {
+    return res.status(409).json({ error: '투표가 시작되어 더 이상 수정할 수 없습니다.' });
+  }
+
+  const chk = checkNumberRange(d, req.body?.voterNumber);
+  if (chk.error) return res.status(409).json({ error: chk.error });
+  const n = chk.n;
+
+  const candidateId = String(req.body?.candidateId || '');
+  const KINDS = new Set(['순수한글', '한자']);
+  const name = String(req.body?.name || '').trim().slice(0, 60);
+  const kind = KINDS.has(req.body?.kind) ? req.body.kind : '순수한글';
+  const english = String(req.body?.english || '').trim().slice(0, 80);
+  if (!name) return res.status(400).json({ error: '이름을 입력하세요.' });
+
+  let error = null;
+  store.mutate((data) => {
+    const c = data.categories.find((x) => x.id === cat.id);
+    if (!data.config.submissionsOpen || c.phase !== 'prep') {
+      error = '투표가 시작되어 더 이상 수정할 수 없습니다.';
+      return;
+    }
+    const target = c.candidates.find((x) => x.id === candidateId && x.proposer === n);
+    if (!target) {
+      error = '수정할 이름을 찾을 수 없습니다.';
+      return;
+    }
+    if (
+      c.candidates.some(
+        (x) => x.id !== candidateId && x.name.trim().toLowerCase() === name.toLowerCase(),
+      )
+    ) {
+      error = '이미 제안된 이름입니다.';
+      return;
+    }
+    target.name = name;
+    target.kind = kind;
+    target.english = english;
+  });
+  if (error) return res.status(409).json({ error });
+
+  res.json({ ok: true, mine: buildMine(store.getData(), n) });
+});
+
+app.delete('/api/propose', (req, res) => {
+  const d = store.getData();
+  const cat = store.getCategory(req.body?.categoryId);
+  if (!cat) return res.status(404).json({ error: '알 수 없는 항목입니다.' });
+  if (!d.config.submissionsOpen || cat.phase !== 'prep') {
+    return res.status(409).json({ error: '투표가 시작되어 더 이상 수정할 수 없습니다.' });
+  }
+
+  const chk = checkNumberRange(d, req.body?.voterNumber);
+  if (chk.error) return res.status(409).json({ error: chk.error });
+  const n = chk.n;
+  const candidateId = String(req.body?.candidateId || '');
+
+  let error = null;
+  store.mutate((data) => {
+    const c = data.categories.find((x) => x.id === cat.id);
+    if (!data.config.submissionsOpen || c.phase !== 'prep') {
+      error = '투표가 시작되어 더 이상 수정할 수 없습니다.';
+      return;
+    }
+    const before = c.candidates.length;
+    c.candidates = c.candidates.filter((x) => !(x.id === candidateId && x.proposer === n));
+    if (c.candidates.length === before) error = '삭제할 이름을 찾을 수 없습니다.';
+  });
+  if (error) return res.status(409).json({ error });
+
+  res.json({ ok: true, mine: buildMine(store.getData(), n) });
+});
+
 /* ---- 투표 ---- */
 app.post('/api/vote/check', (req, res) => {
   const d = store.getData();

@@ -156,12 +156,11 @@ function renderProposeIntro(categoryId) {
       <h2>이 투표 시스템은 무엇인가요?</h2>
       <p class="hint">
         회사에서 새로 지어야 할 이름 4가지를 사내 공모전으로 정합니다. 지금은 <b>이름 제안(준비) 단계</b>이며,
-        이 단계에서 직원 누구나 <b>본인 번호</b>를 입력해 원하는 이름을 <b>항목당 최대 ${st.maxProposalsPerCategory}개</b>까지 제안할 수 있습니다.
+        이 단계에서 직원 누구나 <b>본인 번호</b>를 입력해 원하는 이름을 <b>항목당 최대 ${st.maxProposalsPerCategory}개</b>까지 제안할 수 있습니다(1개만 제안해도 됩니다).
         <b>1차 투표가 시작되면 전체 4개 항목의 이름 제안이 한꺼번에 마감</b>되고, 그 뒤로는 제안된 이름들로만 투표가 진행됩니다.
         상표(商標) 중복 여부는 <b>제안하는 본인이 미리 확인</b>해 주세요.
-        (<a href="${KIPRIS_URL}" target="_blank" rel="noopener">KIPRIS 상표검색</a> ·
-        <a href="${webSearchUrl('')}" target="_blank" rel="noopener">웹검색</a>)
       </p>
+      ${trademarkLinksHtml(null, 'introKipris', 'introWebSearch')}
     </div>
     <div class="card">
       <h2>지금 제안할 항목: ${esc(cat.name)}</h2>
@@ -210,6 +209,24 @@ function renderProposeNumberEntry(categoryId) {
   input.focus();
 }
 
+let editingCandidateId = null; // 인라인 수정 중인 내 제안 id
+
+function trademarkLinksHtml(webSearchInputId, kiprisId, searchId) {
+  return `<p class="hint">
+    상표 중복 여부는 제안 전 직접 확인해 주세요:
+    <a id="${kiprisId}" href="${KIPRIS_URL}" target="_blank" rel="noopener">KIPRIS 상표검색</a> ·
+    <a id="${searchId}" href="${webSearchUrl('')}" target="_blank" rel="noopener">웹검색</a>
+  </p>
+  <details class="kipris-guide">
+    <summary>KIPRIS 검색 필터 체크 방법 보기</summary>
+    <p class="hint">
+      KIPRIS에서 검색할 때 왼쪽 <b>권리구분</b> 필터에서 <b>상표(40)</b>와 <b>상표/서비스표(45)</b> 두 항목이
+      모두 체크되어 있어야 합니다. 둘 중 하나에서라도 동일하거나 비슷한 표장이 있으면 중복으로 간주하고 다른 이름을 제안해 주세요.
+    </p>
+    <img src="/kipris-filter-guide.png" alt="KIPRIS 검색필터: 상표, 상표/서비스표 체크 예시" class="kipris-guide-img" />
+  </details>`;
+}
+
 function renderProposeForm(categoryId) {
   const cat = st.categories.find((c) => c.id === categoryId);
   const mine = proposeMine[categoryId] || { count: 0, names: [] };
@@ -218,25 +235,49 @@ function renderProposeForm(categoryId) {
   view.innerHTML = `
     <div class="card">
       <h2>${esc(cat.name)} · 이름 제안</h2>
-      <p class="hint"><span class="tag">내 번호 ${proposeNumber}번</span> · 이 항목 제안 ${mine.count} / ${max}개</p>
+      <p class="hint"><span class="tag">내 번호 ${proposeNumber}번</span> · 이 항목 제안 ${mine.count} / 최대 ${max}개 (1개만 제안해도 됩니다)</p>
       ${
         mine.names.length
           ? `<div class="rankpanel"><b>내가 제안한 이름</b><ol>${mine.names
-              .map((n) => `<li class="rankrow"><span class="who">${esc(n.name)}</span><span class="tag ${n.kind === '한자' ? 'hanja' : 'hangul'}">${esc(n.kind)}</span></li>`)
-              .join('')}</ol></div>`
+              .map((n) =>
+                editingCandidateId === n.id
+                  ? `<li class="rankrow" id="editRow-${n.id}">
+                      <div class="mt" style="width:100%">
+                        <label class="field"><span>이름</span><input type="text" id="eName" maxlength="60" value="${esc(n.name)}" /></label>
+                        ${trademarkLinksHtml(null, 'eKipris', 'eWebSearch')}
+                        <div class="grid-2">
+                          <label class="field"><span>구분</span>
+                            <select id="eKind">
+                              <option ${n.kind === '순수한글' ? 'selected' : ''}>순수한글</option>
+                              <option ${n.kind === '한자' ? 'selected' : ''}>한자</option>
+                            </select>
+                          </label>
+                          <label class="field"><span>영문 표기 (선택)</span><input type="text" id="eEng" maxlength="80" value="${esc(n.english || '')}" /></label>
+                        </div>
+                        <div id="eErr"></div>
+                        <div class="btn-row mt">
+                          <button class="btn-primary" id="eSave">저장</button>
+                          <button id="eCancel">취소</button>
+                        </div>
+                      </div>
+                    </li>`
+                  : `<li class="rankrow">
+                      <span class="who">${esc(n.name)}</span>
+                      <span class="tag ${n.kind === '한자' ? 'hanja' : 'hangul'}">${esc(n.kind)}</span>
+                      <button data-edit="${n.id}">수정</button>
+                      <button class="btn-danger" data-del="${n.id}">삭제</button>
+                    </li>`,
+              )
+              .join('')}</ol><div id="pListErr"></div></div>`
           : ''
       }
       ${
         full
-          ? `<p class="notice ok mt">이 항목은 이미 ${max}개를 모두 제안했습니다. 감사합니다.</p>`
+          ? `<p class="notice ok mt">이 항목은 이미 ${max}개를 모두 제안했습니다. 마감 전까지는 위 목록에서 수정·삭제할 수 있습니다.</p>`
           : `
       <div class="mt">
         <label class="field"><span>제안할 이름</span><input type="text" id="pName" maxlength="60" placeholder="예: 다솜" /></label>
-        <p class="hint">
-          상표 중복 여부는 제안 전 직접 확인해 주세요:
-          <a id="pKipris" href="${KIPRIS_URL}" target="_blank" rel="noopener">KIPRIS 상표검색</a> ·
-          <a id="pWebSearch" href="${webSearchUrl('')}" target="_blank" rel="noopener">웹검색</a>
-        </p>
+        ${trademarkLinksHtml(null, 'pKipris', 'pWebSearch')}
         <div class="grid-2">
           <label class="field"><span>구분</span>
             <select id="pKind"><option>순수한글</option><option>한자</option></select>
@@ -279,6 +320,64 @@ function renderProposeForm(categoryId) {
     } catch (e) {
       errBox.innerHTML = `<div class="notice err">${esc(e.message)}</div>`;
       submitBtn.disabled = false;
+    }
+  });
+
+  document.querySelectorAll('[data-edit]').forEach((btn) =>
+    btn.addEventListener('click', () => {
+      editingCandidateId = btn.dataset.edit;
+      renderProposeForm(categoryId);
+    }),
+  );
+
+  document.querySelectorAll('[data-del]').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      try {
+        const r = await api('/api/propose', {
+          method: 'DELETE',
+          body: { voterNumber: proposeNumber, categoryId, candidateId: btn.dataset.del },
+        });
+        proposeMine = r.mine;
+        renderProposeForm(categoryId);
+      } catch (e) {
+        const box = document.getElementById('pListErr');
+        if (box) box.innerHTML = `<div class="notice err">${esc(e.message)}</div>`;
+        btn.disabled = false;
+      }
+    }),
+  );
+
+  document.getElementById('eName')?.addEventListener('input', (e) => {
+    document.getElementById('eWebSearch').href = webSearchUrl(e.target.value.trim());
+  });
+  document.getElementById('eCancel')?.addEventListener('click', () => {
+    editingCandidateId = null;
+    renderProposeForm(categoryId);
+  });
+  document.getElementById('eSave')?.addEventListener('click', async () => {
+    const name = document.getElementById('eName').value.trim();
+    const kind = document.getElementById('eKind').value;
+    const english = document.getElementById('eEng').value.trim();
+    const errBox = document.getElementById('eErr');
+    if (!name) {
+      errBox.innerHTML = `<div class="notice err">이름을 입력하세요.</div>`;
+      return;
+    }
+    const saveBtn = document.getElementById('eSave');
+    saveBtn.disabled = true;
+    errBox.innerHTML = '';
+    try {
+      const r = await api('/api/propose', {
+        method: 'PUT',
+        body: { voterNumber: proposeNumber, categoryId, candidateId: editingCandidateId, name, kind, english },
+      });
+      proposeMine = r.mine;
+      editingCandidateId = null;
+      renderProposeForm(categoryId);
+    } catch (e) {
+      errBox.innerHTML = `<div class="notice err">${esc(e.message)}</div>`;
+      saveBtn.disabled = false;
     }
   });
 }

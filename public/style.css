@@ -156,6 +156,27 @@ a {
   margin: 0 0 16px;
 }
 
+.kipris-guide {
+  margin: -8px 0 16px;
+  font-size: 0.88rem;
+}
+.kipris-guide summary {
+  cursor: pointer;
+  color: var(--accent);
+  font-weight: 600;
+}
+.kipris-guide .hint {
+  margin: 8px 0;
+}
+.kipris-guide-img {
+  max-width: 260px;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  display: block;
+  margin-top: 6px;
+}
+
 /* ---------- 폼 ---------- */
 .field {
   display: block;

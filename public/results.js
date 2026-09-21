@@ -1,6 +1,9 @@
 import { api, esc, won } from '/api.js';
 
 const view = document.getElementById('view');
+let data = null;
+let activeCat = location.hash ? location.hash.slice(1) : null;
+
 load();
 setInterval(load, 15000);
 
@@ -17,10 +20,13 @@ const d1 = (n) => Math.round(Number(n || 0) * 10) / 10;
 
 async function load() {
   try {
-    const r = await api('/api/results');
-    render(r);
+    data = await api('/api/results');
+    if (!activeCat || !data.categories.some((c) => c.id === activeCat)) {
+      activeCat = data.categories[0]?.id || null;
+    }
+    render();
   } catch (e) {
-    view.innerHTML = `<div class="card"><h2>결과 비공개</h2><p class="hint">${esc(e.message)}</p></div>`;
+    view.innerHTML = `<div class="card"><h2>결과를 불러올 수 없습니다</h2><p class="hint">${esc(e.message)}</p></div>`;
   }
 }
 
@@ -55,8 +61,15 @@ function roundTable(section) {
     </div>`;
 }
 
-function render(r) {
-  document.getElementById('title').textContent = `${r.title} · 결과`;
+function renderCategory(r) {
+  if (!r.public) {
+    return `<div class="card">
+      <p class="muted">현재 단계: <b>${PHASE_LABEL[r.phase] || r.phase}</b></p>
+      <h2>아직 결과가 공개되지 않았습니다</h2>
+      <p class="hint">이 항목의 결과는 아직 비공개입니다. 투표가 마감되면 공개됩니다.</p>
+    </div>`;
+  }
+
   const cr = r.combineRatio || { round1: 1, round2: 1 };
   const ratioTxt = cr.round1 === cr.round2 ? '1 : 1 (동일)' : `${cr.round1} : ${cr.round2}`;
   let html = `<p class="muted">현재 단계: <b>${PHASE_LABEL[r.phase] || r.phase}</b></p>`;
@@ -92,6 +105,24 @@ function render(r) {
 
   html += `<div class="card"><h2>1차 투표 (토큰 자유 배분)</h2>${roundTable(r.round1)}</div>`;
   html += `<div class="card"><h2>2차 투표 (순위별 점수)</h2>${roundTable(r.round2)}</div>`;
-  html += `<p class="muted" style="font-size:.82rem">15초마다 자동 새로고침됩니다.</p>`;
-  view.innerHTML = html;
+  return html;
+}
+
+function render() {
+  document.getElementById('title').textContent = `${data.title} · 결과`;
+  const tabs = `<div class="tabs">
+    ${data.categories
+      .map((c) => `<button data-cat="${c.id}" class="${c.id === activeCat ? 'active' : ''}">${esc(c.name)}</button>`)
+      .join('')}
+  </div>`;
+  const cur = data.categories.find((c) => c.id === activeCat);
+  view.innerHTML = `${tabs}<div id="catBody">${cur ? renderCategory(cur) : ''}</div>
+    <p class="muted" style="font-size:.82rem">15초마다 자동 새로고침됩니다.</p>`;
+  view.querySelectorAll('[data-cat]').forEach((b) =>
+    b.addEventListener('click', () => {
+      activeCat = b.dataset.cat;
+      location.hash = activeCat;
+      render();
+    }),
+  );
 }

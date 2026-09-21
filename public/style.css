@@ -506,6 +506,44 @@ code.mono {
   }
 }
 
+.catgrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+@media (max-width: 620px) {
+  .catgrid {
+    grid-template-columns: 1fr;
+  }
+}
+.catcard {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+}
+.catcard h3 {
+  margin: 8px 0 4px;
+  font-size: 1.05rem;
+}
+.catcard .hint {
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  margin: 0 0 8px;
+}
+.catbadge {
+  align-self: flex-start;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+}
+
 .adm-cand {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -519,10 +557,15 @@ code.mono {
   margin-bottom: 8px;
 }
 .adm-cand .row2 {
-  display: grid;
-  grid-template-columns: 1fr 0.7fr;
-  gap: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
   margin-bottom: 8px;
+}
+.adm-cand .row2 input[type="number"] {
+  width: auto;
+  flex: 1 1 160px;
 }
 .adm-cand .idx {
   display: grid;

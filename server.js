@@ -62,28 +62,25 @@ function loginRecord(ip) {
 }
 
 /* ------------------------------------------------------------------ */
-/* 공통 헬퍼                                                            */
+/* 공통 헬퍼 (카테고리 = 항목 하나)                                       */
 /* ------------------------------------------------------------------ */
-function votableCandidates(d) {
-  // 이름이 있고, 상표 검토에서 '중복있음'으로 표시되지 않은 후보만 투표 대상
-  return d.candidates
-    .filter((c) => c.name && c.name.trim() && c.trademark !== '중복있음')
-    .sort((a, b) => a.order - b.order);
+function votableCandidates(cat) {
+  return cat.candidates.filter((c) => c.name && c.name.trim() && !c.hidden);
 }
 function publicCandidate(c) {
-  return { id: c.id, name: c.name, kind: c.kind, english: c.english, description: c.description };
+  return { id: c.id, name: c.name, kind: c.kind, english: c.english };
 }
 function roundOf(phase) {
   if (phase === 'round1_open') return 1;
   if (phase === 'round2_open') return 2;
   return null;
 }
-function ballotList(d, round) {
-  return round === 1 ? d.ballots.round1 : d.ballots.round2;
+function ballotList(cat, round) {
+  return round === 1 ? cat.ballots.round1 : cat.ballots.round2;
 }
-function seatsFull(d, round) {
-  const cap = Number(d.config.expectedVoters) || 0;
-  return cap > 0 && ballotList(d, round).length >= cap;
+function seatsFull(cat, round) {
+  const cap = Number(store.getData().config.expectedVoters) || 0;
+  return cap > 0 && ballotList(cat, round).length >= cap;
 }
 function validateRanking(ranking, allowedIds, maxLen) {
   if (!Array.isArray(ranking) || ranking.length === 0) return '선택된 이름이 없습니다.';
@@ -115,35 +112,35 @@ function validateAllocations(allocations, allowedIds, maxPicks, budget) {
 }
 
 // 현재 활성 라운드의 투표 용지 정보
-function ballotInfo(d, round) {
-  const candidates = votableCandidates(d).map(publicCandidate);
+function ballotInfo(cat, round) {
+  const candidates = votableCandidates(cat).map(publicCandidate);
   if (round === 1) {
     return {
       round: 1,
       candidates,
-      maxPick: Math.min(d.config.round1.maxPicks, candidates.length),
-      tokenBudget: d.config.round1.tokenBudget,
+      maxPick: Math.min(cat.round1.maxPicks, candidates.length),
+      tokenBudget: cat.round1.tokenBudget,
     };
   }
   return {
     round: 2,
     candidates,
-    maxPick: Math.min(d.config.round2.points.length, candidates.length),
-    points: d.config.round2.points,
+    maxPick: Math.min(cat.round2.points.length, candidates.length),
+    points: cat.round2.points,
   };
 }
 
-function buildResults(d) {
-  const cfg = d.config;
-  const cand = (id) => d.candidates.find((c) => c.id === id) || {};
+function buildResults(cat) {
+  const cfg = store.getData().config;
+  const cand = (id) => cat.candidates.find((c) => c.id === id) || {};
   const label = (x) => ({ ...x, name: cand(x.id).name || x.id, english: cand(x.id).english || '' });
-  const votableIds = votableCandidates(d).map((c) => c.id);
+  const votableIds = votableCandidates(cat).map((c) => c.id);
 
   // 종합 반영 비율 (기본 1 : 1). 각 라운드를 100점 만점으로 환산한 뒤 이 비율로 합산한다.
-  const w1 = Number(cfg.round1.scoreWeight) >= 0 ? Number(cfg.round1.scoreWeight) : 1;
-  const w2 = Number(cfg.round2.scoreWeight) >= 0 ? Number(cfg.round2.scoreWeight) : 1;
-  const r1 = tallyRound1(d.ballots.round1, votableIds);
-  const r2 = tallyRound2(d.ballots.round2, cfg.round2.points, votableIds);
+  const w1 = Number(cat.round1.scoreWeight) >= 0 ? Number(cat.round1.scoreWeight) : 1;
+  const w2 = Number(cat.round2.scoreWeight) >= 0 ? Number(cat.round2.scoreWeight) : 1;
+  const r1 = tallyRound1(cat.ballots.round1, votableIds);
+  const r2 = tallyRound2(cat.ballots.round2, cat.round2.points, votableIds);
 
   const r1Total = r1.rows.reduce((s, x) => s + x.score, 0) || 1; // 0 방지
   const r2Total = r2.rows.reduce((s, x) => s + x.score, 0) || 1;
@@ -180,21 +177,21 @@ function buildResults(d) {
 
   const expected = Number(cfg.expectedVoters) || 0;
   return {
-    phase: cfg.phase,
-    title: cfg.title,
-    subtitle: cfg.subtitle,
+    id: cat.id,
+    name: cat.name,
+    phase: cat.phase,
     prize: cfg.prize,
     expectedVoters: expected,
     combineRatio: { round1: w1, round2: w2 }, // 각 라운드 100점 환산 후 이 비율로 합산
     round1: {
-      tokenBudget: cfg.round1.tokenBudget,
-      maxPicks: cfg.round1.maxPicks,
+      tokenBudget: cat.round1.tokenBudget,
+      maxPicks: cat.round1.maxPicks,
       totalBallots: r1.totalBallots,
       expectedVoters: expected,
       rows: r1.rows.map(label),
     },
     round2: {
-      points: cfg.round2.points,
+      points: cat.round2.points,
       totalBallots: r2.totalBallots,
       expectedVoters: expected,
       rows: r2.rows.map(label),
@@ -204,63 +201,177 @@ function buildResults(d) {
   };
 }
 
+function resultsVisible(cat) {
+  return cat.resultsPublic || ['round1_closed', 'round2_open', 'round2_closed', 'done'].includes(cat.phase);
+}
+
+function categorySummary(cat) {
+  const round = roundOf(cat.phase);
+  const out = {
+    id: cat.id,
+    name: cat.name,
+    description: cat.description,
+    examples: cat.examples,
+    phase: cat.phase,
+    activeRound: round,
+  };
+  if (round) {
+    out.count = ballotList(cat, round).length;
+    out.full = seatsFull(cat, round);
+  }
+  return out;
+}
+
+// 번호 방식 공통: 요청의 voterNumber 가 1~expectedVoters 범위인지만 검증
+function checkNumberRange(d, raw) {
+  const max = Number(d.config.expectedVoters) || 0;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1 || n > max) return { error: `본인 번호(1~${max})를 정확히 입력하세요.` };
+  return { n };
+}
+// 투표용: 위 검증 + 해당 라운드에서 그 번호가 이미 투표했는지 확인
+function checkVoterNumber(d, cat, round, raw) {
+  const chk = checkNumberRange(d, raw);
+  if (chk.error) return chk;
+  if (ballotList(cat, round).some((b) => b.voterNumber === chk.n)) {
+    return { error: `${chk.n}번은 이미 이 라운드 투표를 완료했습니다.` };
+  }
+  return chk;
+}
+
+function numberMode(d) {
+  return !!d.config.useVoterNumbers && (Number(d.config.expectedVoters) || 0) >= 1;
+}
+
+// 이름 제안: 특정 번호가 각 항목에 몇 개를, 어떤 이름으로 제안했는지
+function buildMine(d, n) {
+  const mine = {};
+  for (const cat of d.categories) {
+    const list = cat.candidates.filter((c) => c.proposer === n);
+    mine[cat.id] = {
+      count: list.length,
+      names: list.map((c) => ({ id: c.id, name: c.name, kind: c.kind, english: c.english })),
+    };
+  }
+  return mine;
+}
+
 /* ------------------------------------------------------------------ */
 /* 공개 API                                                            */
 /* ------------------------------------------------------------------ */
 app.get('/api/state', (req, res) => {
   const d = store.getData();
   const cfg = d.config;
-  const round = roundOf(cfg.phase);
-  const out = {
+  res.json({
     title: cfg.title,
     subtitle: cfg.subtitle,
     prize: cfg.prize,
-    phase: cfg.phase,
-    resultsPublic: cfg.resultsPublic,
     expectedVoters: Number(cfg.expectedVoters) || 0,
-    useVoterNumbers: !!cfg.useVoterNumbers && (Number(cfg.expectedVoters) || 0) >= 1,
+    useVoterNumbers: numberMode(d),
+    submissionsOpen: !!cfg.submissionsOpen,
+    maxProposalsPerCategory: Number(cfg.maxProposalsPerCategory) || 2,
+    categories: d.categories.map(categorySummary),
+  });
+});
+
+app.get('/api/category/:id', (req, res) => {
+  const cat = store.getCategory(req.params.id);
+  if (!cat) return res.status(404).json({ error: '알 수 없는 항목입니다.' });
+  const d = store.getData();
+  const round = roundOf(cat.phase);
+  const out = {
+    id: cat.id,
+    name: cat.name,
+    description: cat.description,
+    examples: cat.examples,
+    phase: cat.phase,
+    expectedVoters: Number(d.config.expectedVoters) || 0,
+    useVoterNumbers: numberMode(d),
     activeRound: round,
   };
   if (round) {
-    out.ballot = ballotInfo(d, round);
-    out.count = ballotList(d, round).length;
-    out.full = seatsFull(d, round);
+    out.ballot = ballotInfo(cat, round);
+    out.count = ballotList(cat, round).length;
+    out.full = seatsFull(cat, round);
   }
   res.json(out);
 });
 
-function numberMode(d) {
-  return !!d.config.useVoterNumbers && (Number(d.config.expectedVoters) || 0) >= 1;
-}
-// 번호 방식일 때: 요청의 voterNumber 검증 → { n } 또는 { error }
-function checkVoterNumber(d, round, raw) {
-  const max = Number(d.config.expectedVoters) || 0;
-  const n = Number(raw);
-  if (!Number.isInteger(n) || n < 1 || n > max) return { error: `본인 번호(1~${max})를 정확히 입력하세요.` };
-  if (ballotList(d, round).some((b) => b.voterNumber === n)) {
-    return { error: `${n}번은 이미 이 라운드 투표를 완료했습니다.` };
-  }
-  return { n };
-}
+/* ---- 이름 제안 (준비 단계) ---- */
+app.post('/api/propose/check', (req, res) => {
+  const d = store.getData();
+  const chk = checkNumberRange(d, req.body?.voterNumber);
+  if (chk.error) return res.status(409).json({ error: chk.error });
+  res.json({ ok: true, mine: buildMine(d, chk.n) });
+});
 
-// 번호 방식: 투표 시작 전 본인 번호가 유효/미사용인지 확인
+app.post('/api/propose', (req, res) => {
+  const d = store.getData();
+  if (!d.config.submissionsOpen) return res.status(409).json({ error: '이름 제안이 마감되었습니다.' });
+
+  const cat = store.getCategory(req.body?.categoryId);
+  if (!cat) return res.status(404).json({ error: '알 수 없는 항목입니다.' });
+  if (cat.phase !== 'prep') {
+    return res.status(409).json({ error: '이 항목은 이미 투표가 시작되어 이름을 제안할 수 없습니다.' });
+  }
+
+  const chk = checkNumberRange(d, req.body?.voterNumber);
+  if (chk.error) return res.status(409).json({ error: chk.error });
+  const n = chk.n;
+
+  const KINDS = new Set(['순수한글', '한자']);
+  const name = String(req.body?.name || '').trim().slice(0, 60);
+  const kind = KINDS.has(req.body?.kind) ? req.body.kind : '순수한글';
+  const english = String(req.body?.english || '').trim().slice(0, 80);
+  if (!name) return res.status(400).json({ error: '이름을 입력하세요.' });
+
+  const max = Number(d.config.maxProposalsPerCategory) || 2;
+
+  let error = null;
+  store.mutate((data) => {
+    const c = data.categories.find((x) => x.id === cat.id);
+    if (!data.config.submissionsOpen || c.phase !== 'prep') {
+      error = '이름 제안이 마감되었습니다.';
+      return;
+    }
+    const mineCount = c.candidates.filter((x) => x.proposer === n).length;
+    if (mineCount >= max) {
+      error = `항목당 최대 ${max}개까지 제안할 수 있습니다.`;
+      return;
+    }
+    if (c.candidates.some((x) => x.name.trim().toLowerCase() === name.toLowerCase())) {
+      error = '이미 제안된 이름입니다.';
+      return;
+    }
+    c.candidates.push(store.makeCandidate({ name, kind, english, proposer: n }));
+  });
+  if (error) return res.status(409).json({ error });
+
+  res.json({ ok: true, mine: buildMine(store.getData(), n) });
+});
+
+/* ---- 투표 ---- */
 app.post('/api/vote/check', (req, res) => {
   const d = store.getData();
-  const round = roundOf(d.config.phase);
+  const cat = store.getCategory(req.body?.categoryId);
+  if (!cat) return res.status(404).json({ error: '알 수 없는 항목입니다.' });
+  const round = roundOf(cat.phase);
   if (!round) return res.status(409).json({ error: '지금은 진행 중인 투표가 없습니다.' });
-  if (seatsFull(d, round)) return res.status(409).json({ error: '예정된 투표 인원이 모두 참여하여 마감되었습니다.' });
+  if (seatsFull(cat, round)) return res.status(409).json({ error: '예정된 투표 인원이 모두 참여하여 마감되었습니다.' });
   if (!numberMode(d)) return res.json({ ok: true }); // 번호 안 쓰면 통과
-  const chk = checkVoterNumber(d, round, req.body?.voterNumber);
+  const chk = checkVoterNumber(d, cat, round, req.body?.voterNumber);
   if (chk.error) return res.status(409).json({ error: chk.error });
   res.json({ ok: true });
 });
 
 app.post('/api/vote/submit', (req, res) => {
   const d = store.getData();
-  const round = roundOf(d.config.phase);
+  const cat = store.getCategory(req.body?.categoryId);
+  if (!cat) return res.status(404).json({ error: '알 수 없는 항목입니다.' });
+  const round = roundOf(cat.phase);
   if (!round) return res.status(409).json({ error: '지금은 진행 중인 투표가 없습니다.' });
 
-  if (seatsFull(d, round)) {
+  if (seatsFull(cat, round)) {
     return res.status(409).json({ error: '예정된 투표 인원이 모두 참여하여 마감되었습니다.' });
   }
 
@@ -268,23 +379,23 @@ app.post('/api/vote/submit', (req, res) => {
   const useNum = numberMode(d);
   let voterNumber = null;
   if (useNum) {
-    const chk = checkVoterNumber(d, round, req.body?.voterNumber);
+    const chk = checkVoterNumber(d, cat, round, req.body?.voterNumber);
     if (chk.error) return res.status(409).json({ error: chk.error });
     voterNumber = chk.n;
   } else {
     if (!voterKey) return res.status(400).json({ error: '잘못된 요청입니다. 페이지를 새로고침해 주세요.' });
-    if (ballotList(d, round).some((b) => b.voterKey === voterKey)) {
+    if (ballotList(cat, round).some((b) => b.voterKey === voterKey)) {
       return res.status(409).json({ error: '이 기기에서는 이미 투표를 완료했습니다.' });
     }
   }
 
-  const allowedIds = votableCandidates(d).map((c) => c.id);
-  const info = ballotInfo(d, round);
+  const allowedIds = votableCandidates(cat).map((c) => c.id);
+  const info = ballotInfo(cat, round);
   const base = { voterNumber, voterKey, at: new Date().toISOString() };
   let entry;
   if (round === 1) {
     const allocations = (req.body?.allocations || []).map((a) => ({ id: a && a.id, points: Number(a && a.points) }));
-    const err = validateAllocations(allocations, allowedIds, info.maxPick, d.config.round1.tokenBudget);
+    const err = validateAllocations(allocations, allowedIds, info.maxPick, cat.round1.tokenBudget);
     if (err) return res.status(400).json({ error: err });
     entry = { ...base, allocations };
   } else {
@@ -296,8 +407,9 @@ app.post('/api/vote/submit', (req, res) => {
 
   let stored = false;
   store.mutate((data) => {
-    const list = ballotList(data, round);
-    if (seatsFull(data, round)) return;
+    const c = data.categories.find((x) => x.id === cat.id);
+    const list = ballotList(c, round);
+    if (seatsFull(c, round)) return;
     if (useNum && list.some((b) => b.voterNumber === voterNumber)) return;
     if (!useNum && list.some((b) => b.voterKey === voterKey)) return;
     list.push(entry);
@@ -305,16 +417,17 @@ app.post('/api/vote/submit', (req, res) => {
   });
   if (!stored) return res.status(409).json({ error: '방금 마감되었거나 이미 투표되었습니다.' });
 
-  res.json({ ok: true, count: ballotList(store.getData(), round).length });
+  res.json({ ok: true, count: ballotList(store.getCategory(cat.id), round).length });
 });
 
 app.get('/api/results', (req, res) => {
   const d = store.getData();
-  const closedOrLater = ['round1_closed', 'round2_open', 'round2_closed', 'done'].includes(d.config.phase);
-  if (!d.config.resultsPublic && !closedOrLater) {
-    return res.status(403).json({ error: '결과가 아직 공개되지 않았습니다.' });
-  }
-  res.json(buildResults(d));
+  res.json({
+    title: d.config.title,
+    categories: d.categories.map((cat) =>
+      resultsVisible(cat) ? { public: true, ...buildResults(cat) } : { public: false, id: cat.id, name: cat.name, phase: cat.phase },
+    ),
+  });
 });
 
 /* ------------------------------------------------------------------ */
@@ -341,13 +454,20 @@ app.get('/api/admin/data', requireAdmin, (req, res) => {
       .map((b) => b.voterNumber)
       .filter((n) => Number.isInteger(n))
       .sort((a, b) => a - b);
-  res.json({
-    config: d.config,
-    candidates: d.candidates,
-    ballotCounts: { round1: d.ballots.round1.length, round2: d.ballots.round2.length },
-    votedNumbers: { round1: nums(d.ballots.round1), round2: nums(d.ballots.round2) },
-    results: buildResults(d),
+  const categories = d.categories.map((cat) => {
+    const proposalCounts = {};
+    for (const c of cat.candidates) {
+      if (Number.isInteger(c.proposer)) proposalCounts[c.proposer] = (proposalCounts[c.proposer] || 0) + 1;
+    }
+    return {
+      ...cat,
+      ballotCounts: { round1: cat.ballots.round1.length, round2: cat.ballots.round2.length },
+      votedNumbers: { round1: nums(cat.ballots.round1), round2: nums(cat.ballots.round2) },
+      proposalCounts,
+      results: buildResults(cat),
+    };
   });
+  res.json({ config: d.config, categories });
 });
 
 app.put('/api/admin/config', requireAdmin, (req, res) => {
@@ -357,12 +477,38 @@ app.put('/api/admin/config', requireAdmin, (req, res) => {
     if (typeof b.title === 'string') c.title = b.title.slice(0, 120);
     if (typeof b.subtitle === 'string') c.subtitle = b.subtitle.slice(0, 200);
     if (Number.isFinite(b.prize) && b.prize >= 0) c.prize = Math.round(b.prize);
-    if (typeof b.resultsPublic === 'boolean') c.resultsPublic = b.resultsPublic;
     if (typeof b.useVoterNumbers === 'boolean') c.useVoterNumbers = b.useVoterNumbers;
+    if (typeof b.submissionsOpen === 'boolean') c.submissionsOpen = b.submissionsOpen;
     if (Number.isFinite(b.expectedVoters) && b.expectedVoters >= 0) {
       c.expectedVoters = Math.min(100000, Math.round(b.expectedVoters));
     }
+    if (Number.isFinite(b.maxProposalsPerCategory) && b.maxProposalsPerCategory >= 1) {
+      c.maxProposalsPerCategory = Math.min(30, Math.round(b.maxProposalsPerCategory));
+    }
+  });
+  res.json({ ok: true, config: store.getData().config });
+});
 
+app.put('/api/admin/category/:id', requireAdmin, (req, res) => {
+  const cat = store.getCategory(req.params.id);
+  if (!cat) return res.status(404).json({ error: '알 수 없는 항목입니다.' });
+  const b = req.body || {};
+  store.mutate((data) => {
+    const c = data.categories.find((x) => x.id === req.params.id);
+    if (typeof b.name === 'string' && b.name.trim()) c.name = b.name.trim().slice(0, 80);
+    if (typeof b.description === 'string') c.description = b.description.slice(0, 2000);
+    if (Array.isArray(b.examples)) c.examples = b.examples.map((x) => String(x).slice(0, 40)).slice(0, 10);
+  });
+  res.json({ ok: true, category: store.getCategory(req.params.id) });
+});
+
+app.put('/api/admin/category/:id/config', requireAdmin, (req, res) => {
+  const cat = store.getCategory(req.params.id);
+  if (!cat) return res.status(404).json({ error: '알 수 없는 항목입니다.' });
+  const b = req.body || {};
+  store.mutate((data) => {
+    const c = data.categories.find((x) => x.id === req.params.id);
+    if (typeof b.resultsPublic === 'boolean') c.resultsPublic = b.resultsPublic;
     if (b.round1) {
       if (Number.isFinite(b.round1.tokenBudget) && b.round1.tokenBudget >= 1) {
         c.round1.tokenBudget = Math.min(100000, Math.round(b.round1.tokenBudget));
@@ -384,83 +530,95 @@ app.put('/api/admin/config', requireAdmin, (req, res) => {
       }
     }
   });
-  res.json({ ok: true, config: store.getData().config });
-});
-
-app.put('/api/admin/candidates', requireAdmin, (req, res) => {
-  const list = req.body?.candidates;
-  if (!Array.isArray(list)) return res.status(400).json({ error: 'candidates 배열이 필요합니다.' });
-
-  const KINDS = new Set(['순수한글', '한자']);
-  const TM = new Set(['미확인', '중복없음', '중복있음']);
-
-  store.mutate((d) => {
-    const byId = new Map(d.candidates.map((c) => [c.id, c]));
-    for (const inp of list) {
-      const c = byId.get(inp.id);
-      if (!c) continue;
-      if (typeof inp.name === 'string') c.name = inp.name.slice(0, 60);
-      if (KINDS.has(inp.kind)) c.kind = inp.kind;
-      if (typeof inp.english === 'string') c.english = inp.english.slice(0, 80);
-      if (TM.has(inp.trademark)) c.trademark = inp.trademark;
-      if (typeof inp.description === 'string') c.description = inp.description.slice(0, 4000);
-      if (typeof inp.proposer === 'string') c.proposer = inp.proposer.slice(0, 40);
-    }
-  });
-  res.json({ ok: true, candidates: store.getData().candidates });
-});
-
-// 후보(이름) 칸 수 조정 — 준비 단계 + 표 없음일 때만
-app.put('/api/admin/candidate-count', requireAdmin, (req, res) => {
-  const n = Math.round(Number(req.body?.count));
-  if (!Number.isFinite(n) || n < 2 || n > 30) {
-    return res.status(400).json({ error: '후보 수는 2~30 사이여야 합니다.' });
-  }
-  const d = store.getData();
-  if (d.config.phase !== 'prep') {
-    return res.status(409).json({ error: '준비 단계에서만 후보 수를 바꿀 수 있습니다.' });
-  }
-  if (d.ballots.round1.length || d.ballots.round2.length) {
-    return res.status(409).json({ error: '투표가 시작된 뒤에는 후보 수를 바꿀 수 없습니다.' });
-  }
-  store.mutate((data) => {
-    const cur = data.candidates.length;
-    if (n > cur) {
-      for (let i = cur; i < n; i++) data.candidates.push(store.makeCandidate(i));
-    } else if (n < cur) {
-      data.candidates = data.candidates.slice(0, n);
-    }
-    data.config.candidateCount = n;
-  });
-  res.json({ ok: true, candidateCount: n, candidates: store.getData().candidates });
+  res.json({ ok: true, category: store.getCategory(req.params.id) });
 });
 
 const PHASES = ['prep', 'round1_open', 'round1_closed', 'round2_open', 'round2_closed', 'done'];
-app.put('/api/admin/phase', requireAdmin, (req, res) => {
+app.put('/api/admin/category/:id/phase', requireAdmin, (req, res) => {
   const target = req.body?.phase;
   if (!PHASES.includes(target)) return res.status(400).json({ error: '알 수 없는 단계입니다.' });
-
-  const d = store.getData();
-  if (target === 'round1_open' || target === 'round2_open') {
-    if (votableCandidates(d).length < 2) {
-      return res.status(400).json({ error: '투표 가능한 이름(비어있음·상표 중복있음 제외)이 2개 이상 필요합니다.' });
-    }
+  const cat = store.getCategory(req.params.id);
+  if (!cat) return res.status(404).json({ error: '알 수 없는 항목입니다.' });
+  if ((target === 'round1_open' || target === 'round2_open') && votableCandidates(cat).length < 2) {
+    return res.status(400).json({ error: '투표 가능한 이름(비어있음 제외)이 2개 이상 필요합니다.' });
   }
   store.mutate((data) => {
-    data.config.phase = target;
+    const c = data.categories.find((x) => x.id === req.params.id);
+    c.phase = target;
+    // 어느 항목이든 준비 단계를 벗어나면 전체 항목의 이름 제안을 동시에 마감한다.
+    if (target !== 'prep') data.config.submissionsOpen = false;
   });
-  res.json({ ok: true, phase: target });
+  const d = store.getData();
+  res.json({ ok: true, phase: target, submissionsOpen: d.config.submissionsOpen });
 });
 
-app.post('/api/admin/reset', requireAdmin, (req, res) => {
+app.post('/api/admin/category/:id/candidates', requireAdmin, (req, res) => {
+  const cat = store.getCategory(req.params.id);
+  if (!cat) return res.status(404).json({ error: '알 수 없는 항목입니다.' });
+  const KINDS = new Set(['순수한글', '한자']);
+  const name = String(req.body?.name || '').trim().slice(0, 60);
+  if (!name) return res.status(400).json({ error: '이름을 입력하세요.' });
+  const kind = KINDS.has(req.body?.kind) ? req.body.kind : '순수한글';
+  const english = String(req.body?.english || '').trim().slice(0, 80);
+  const proposerRaw = Number(req.body?.proposer);
+  const proposer = Number.isInteger(proposerRaw) ? proposerRaw : null;
+
+  let created = null;
+  store.mutate((data) => {
+    const c = data.categories.find((x) => x.id === req.params.id);
+    created = store.makeCandidate({ name, kind, english, proposer });
+    c.candidates.push(created);
+  });
+  res.json({ ok: true, candidate: created, category: store.getCategory(req.params.id) });
+});
+
+app.put('/api/admin/category/:id/candidates', requireAdmin, (req, res) => {
+  const cat = store.getCategory(req.params.id);
+  if (!cat) return res.status(404).json({ error: '알 수 없는 항목입니다.' });
+  const list = req.body?.candidates;
+  if (!Array.isArray(list)) return res.status(400).json({ error: 'candidates 배열이 필요합니다.' });
+  const KINDS = new Set(['순수한글', '한자']);
+  store.mutate((data) => {
+    const c = data.categories.find((x) => x.id === req.params.id);
+    const byId = new Map(c.candidates.map((x) => [x.id, x]));
+    for (const inp of list) {
+      const cand = byId.get(inp.id);
+      if (!cand) continue;
+      if (typeof inp.name === 'string' && inp.name.trim()) cand.name = inp.name.trim().slice(0, 60);
+      if (KINDS.has(inp.kind)) cand.kind = inp.kind;
+      if (typeof inp.english === 'string') cand.english = inp.english.slice(0, 80);
+      if (typeof inp.hidden === 'boolean') cand.hidden = inp.hidden;
+    }
+  });
+  res.json({ ok: true, category: store.getCategory(req.params.id) });
+});
+
+app.delete('/api/admin/category/:id/candidates/:candidateId', requireAdmin, (req, res) => {
+  const cat = store.getCategory(req.params.id);
+  if (!cat) return res.status(404).json({ error: '알 수 없는 항목입니다.' });
+  let removed = false;
+  store.mutate((data) => {
+    const c = data.categories.find((x) => x.id === req.params.id);
+    const before = c.candidates.length;
+    c.candidates = c.candidates.filter((x) => x.id !== req.params.candidateId);
+    removed = c.candidates.length !== before;
+  });
+  if (!removed) return res.status(404).json({ error: '해당 이름을 찾을 수 없습니다.' });
+  res.json({ ok: true, category: store.getCategory(req.params.id) });
+});
+
+app.post('/api/admin/category/:id/reset', requireAdmin, (req, res) => {
+  const cat = store.getCategory(req.params.id);
+  if (!cat) return res.status(404).json({ error: '알 수 없는 항목입니다.' });
   const what = req.body?.what;
   if (!['round1', 'round2', 'all'].includes(what)) {
     return res.status(400).json({ error: 'what 은 round1 | round2 | all 이어야 합니다.' });
   }
-  store.mutate((d) => {
-    if (what === 'round1' || what === 'all') d.ballots.round1 = [];
-    if (what === 'round2' || what === 'all') d.ballots.round2 = [];
-    if (what === 'all') d.config.phase = 'prep';
+  store.mutate((data) => {
+    const c = data.categories.find((x) => x.id === req.params.id);
+    if (what === 'round1' || what === 'all') c.ballots.round1 = [];
+    if (what === 'round2' || what === 'all') c.ballots.round2 = [];
+    if (what === 'all') c.phase = 'prep';
   });
   res.json({ ok: true });
 });

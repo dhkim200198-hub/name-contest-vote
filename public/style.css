@@ -159,17 +159,16 @@ a {
 .kipris-guide {
   margin: -8px 0 16px;
   font-size: 0.88rem;
-}
-.kipris-guide summary {
-  cursor: pointer;
-  color: var(--accent);
-  font-weight: 600;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
 }
 .kipris-guide .hint {
-  margin: 8px 0;
+  margin: 0 0 8px;
 }
 .kipris-guide-img {
-  max-width: 260px;
+  max-width: 160px;
   width: 100%;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);

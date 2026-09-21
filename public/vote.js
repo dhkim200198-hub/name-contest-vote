@@ -217,14 +217,13 @@ function trademarkLinksHtml(webSearchInputId, kiprisId, searchId) {
     <a id="${kiprisId}" href="${KIPRIS_URL}" target="_blank" rel="noopener">KIPRIS 상표검색</a> ·
     <a id="${searchId}" href="${webSearchUrl('')}" target="_blank" rel="noopener">웹검색</a>
   </p>
-  <details class="kipris-guide">
-    <summary>KIPRIS 검색 필터 체크 방법 보기</summary>
+  <div class="kipris-guide">
     <p class="hint">
-      KIPRIS에서 검색할 때 왼쪽 <b>권리구분</b> 필터에서 <b>상표(40)</b>와 <b>상표/서비스표(45)</b> 두 항목이
+      <b>KIPRIS 검색 필터 체크 방법</b>: 왼쪽 <b>권리구분</b> 필터에서 <b>상표(40)</b>와 <b>상표/서비스표(45)</b> 두 항목이
       모두 체크되어 있어야 합니다. 둘 중 하나에서라도 동일하거나 비슷한 표장이 있으면 중복으로 간주하고 다른 이름을 제안해 주세요.
     </p>
     <img src="/kipris-filter-guide.png" alt="KIPRIS 검색필터: 상표, 상표/서비스표 체크 예시" class="kipris-guide-img" />
-  </details>`;
+  </div>`;
 }
 
 function renderProposeForm(categoryId) {

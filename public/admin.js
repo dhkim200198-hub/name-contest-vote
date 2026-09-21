@@ -582,11 +582,11 @@ function dangerCard(cat) {
   return `
     <div class="card" style="border-color:color-mix(in srgb,var(--danger) 40%,transparent)">
       <h2 style="color:var(--danger)">위험 구역 (이 항목만 초기화)</h2>
-      <p class="hint">초기화하면 이 항목의 투표 기록이 모두 삭제됩니다. 되돌릴 수 없습니다.</p>
+      <p class="hint">1차/2차 초기화는 해당 라운드의 투표 기록만 삭제합니다. <b>전체 초기화는 투표 기록뿐 아니라 직원들이 제안한 이름도 모두 삭제</b>하고 준비 단계로 되돌립니다. 되돌릴 수 없습니다.</p>
       <div class="btn-row">
         <button class="btn-danger" data-reset="round1">1차 투표 초기화</button>
         <button class="btn-danger" data-reset="round2">2차 투표 초기화</button>
-        <button class="btn-danger" data-reset="all">전체 초기화 (준비 단계로)</button>
+        <button class="btn-danger" data-reset="all">전체 초기화 (제안 이름 포함 삭제 + 준비 단계로)</button>
       </div>
     </div>`;
 }
@@ -594,7 +594,11 @@ function wireDangerCard(root, cat) {
   root.querySelectorAll('[data-reset]').forEach((b) =>
     b.addEventListener('click', async () => {
       const what = b.dataset.reset;
-      if (!confirm(`정말 "${cat.name}" 항목의 "${what}" 를 초기화할까요? 되돌릴 수 없습니다.`)) return;
+      const msg =
+        what === 'all'
+          ? `정말 "${cat.name}" 항목을 전체 초기화할까요? 투표 기록과 직원들이 제안한 이름까지 모두 삭제되고 준비 단계로 돌아갑니다. 되돌릴 수 없습니다.`
+          : `정말 "${cat.name}" 항목의 "${what}" 를 초기화할까요? 되돌릴 수 없습니다.`;
+      if (!confirm(msg)) return;
       if (!confirm('한 번 더 확인합니다. 초기화를 진행합니다.')) return;
       await authed(`/api/admin/category/${cat.id}/reset`, { body: { what } });
       await refresh();

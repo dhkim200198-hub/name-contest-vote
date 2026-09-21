@@ -704,7 +704,10 @@ app.post('/api/admin/category/:id/reset', requireAdmin, (req, res) => {
     const c = data.categories.find((x) => x.id === req.params.id);
     if (what === 'round1' || what === 'all') c.ballots.round1 = [];
     if (what === 'round2' || what === 'all') c.ballots.round2 = [];
-    if (what === 'all') c.phase = 'prep';
+    if (what === 'all') {
+      c.phase = 'prep';
+      c.candidates = []; // 제안된 이름도 함께 초기화
+    }
   });
   res.json({ ok: true });
 });

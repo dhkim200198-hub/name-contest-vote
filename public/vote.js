@@ -17,6 +17,12 @@ const PHASE_MSG = {
   done: '공모전이 종료되었습니다. 결과 페이지에서 최종 선정된 이름을 확인하세요.',
 };
 
+const KIPRIS_URL = 'https://www.kipris.or.kr/khome/search/searchResult.do?tab=trademark';
+function webSearchUrl(name) {
+  const q = (name ? name + ' ' : '') + '상표 trademark 소프트웨어';
+  return `https://www.google.com/search?q=${encodeURIComponent(q)}`;
+}
+
 function voterKey() {
   try {
     let k = localStorage.getItem('voterKey');
@@ -153,6 +159,8 @@ function renderProposeIntro(categoryId) {
         이 단계에서 직원 누구나 <b>본인 번호</b>를 입력해 원하는 이름을 <b>항목당 최대 ${st.maxProposalsPerCategory}개</b>까지 제안할 수 있습니다.
         <b>1차 투표가 시작되면 전체 4개 항목의 이름 제안이 한꺼번에 마감</b>되고, 그 뒤로는 제안된 이름들로만 투표가 진행됩니다.
         상표(商標) 중복 여부는 <b>제안하는 본인이 미리 확인</b>해 주세요.
+        (<a href="${KIPRIS_URL}" target="_blank" rel="noopener">KIPRIS 상표검색</a> ·
+        <a href="${webSearchUrl('')}" target="_blank" rel="noopener">웹검색</a>)
       </p>
     </div>
     <div class="card">
@@ -224,6 +232,11 @@ function renderProposeForm(categoryId) {
           : `
       <div class="mt">
         <label class="field"><span>제안할 이름</span><input type="text" id="pName" maxlength="60" placeholder="예: 다솜" /></label>
+        <p class="hint">
+          상표 중복 여부는 제안 전 직접 확인해 주세요:
+          <a id="pKipris" href="${KIPRIS_URL}" target="_blank" rel="noopener">KIPRIS 상표검색</a> ·
+          <a id="pWebSearch" href="${webSearchUrl('')}" target="_blank" rel="noopener">웹검색</a>
+        </p>
         <div class="grid-2">
           <label class="field"><span>구분</span>
             <select id="pKind"><option>순수한글</option><option>한자</option></select>
@@ -242,6 +255,10 @@ function renderProposeForm(categoryId) {
 
   document.getElementById('pOtherCat')?.addEventListener('click', goGrid);
   document.getElementById('pDone')?.addEventListener('click', goGrid);
+
+  document.getElementById('pName')?.addEventListener('input', (e) => {
+    document.getElementById('pWebSearch').href = webSearchUrl(e.target.value.trim());
+  });
 
   const submitBtn = document.getElementById('pSubmit');
   submitBtn?.addEventListener('click', async () => {

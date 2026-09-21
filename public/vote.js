@@ -276,13 +276,13 @@ function renderProposeForm(categoryId) {
           ? `<p class="notice ok mt">이 항목은 이미 ${max}개를 모두 제안했습니다. 마감 전까지는 위 목록에서 수정·삭제할 수 있습니다.</p>`
           : `
       <div class="mt">
-        <label class="field"><span>제안할 이름</span><input type="text" id="pName" maxlength="60" placeholder="예: 다솜" /></label>
+        <label class="field"><span>제안할 이름</span><input type="text" id="pName" maxlength="60" placeholder="예: 누리" /></label>
         ${trademarkLinksHtml(null, 'pKipris', 'pWebSearch')}
         <div class="grid-2">
           <label class="field"><span>구분</span>
             <select id="pKind"><option>순수한글</option><option>한자</option></select>
           </label>
-          <label class="field"><span>영문 표기 (선택)</span><input type="text" id="pEng" maxlength="80" placeholder="예: Dasom" /></label>
+          <label class="field"><span>영문 표기 (선택)</span><input type="text" id="pEng" maxlength="80" placeholder="예: Nuri" /></label>
         </div>
         <div id="pErr"></div>
         <button class="btn-primary btn-lg btn-block" id="pSubmit">이 이름 제안하기</button>

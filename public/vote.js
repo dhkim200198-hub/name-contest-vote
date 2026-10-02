@@ -332,6 +332,9 @@ function renderProposeForm(categoryId) {
   const mine = proposeMine[categoryId] || { count: 0, names: [] };
   const max = st.maxProposalsPerCategory;
   const full = mine.count >= max;
+  // 세트형 항목(회의실)은 남은 제안 수만큼 입력 칸을 한 번에 보여준다 (첫 칸 외에는 선택)
+  const slotCount = cat.pairLabels ? Math.max(0, max - mine.count) : 1;
+  const slotPrefixes = Array.from({ length: slotCount }, (_, i) => (i === 0 ? 'p' : `p${i}`));
   view.innerHTML = `
     <div class="card">
       <h2>${esc(cat.name)} · 이름 제안</h2>
@@ -382,24 +385,34 @@ function renderProposeForm(categoryId) {
       }
       ${
         full
-          ? `<p class="notice ok mt">이 항목은 이미 ${max}개를 모두 제안했습니다. 마감 전까지는 위 목록에서 수정·삭제할 수 있습니다.</p>`
+          ? `<p class="notice ok mt">이 항목은 이미 ${max}${cat.pairLabels ? '세트' : '개'}를 모두 제안했습니다. 마감 전까지는 위 목록에서 수정·삭제할 수 있습니다.</p>`
           : `
       <div class="mt">
-        ${nameFieldsHtml(cat, 'p').name}
-        ${
-          cat.freeNaming
-            ? ''
-            : `${trademarkLinksHtml(null, 'pKipris', 'pWebSearch')}
-        <div class="grid-2">
-          <label class="field"><span>구분</span>
-            <select id="pKind"><option>순수한글</option><option>한자</option></select>
-          </label>
-        </div>`
-        }
-        ${nameFieldsHtml(cat, 'p').eng}
-        <label class="field"><span>이름 설명 (한두 줄, 필수)</span><textarea id="pDesc" maxlength="200" rows="2" placeholder="이 이름을 제안한 이유나 의미를 간단히 적어주세요"></textarea></label>
+        ${slotPrefixes
+          .map(
+            (prefix, i) => `
+        <div class="${slotPrefixes.length > 1 ? 'set-slot' : ''}">
+          ${slotPrefixes.length > 1 ? `<h3>세트 ${mine.count + i + 1}${i > 0 ? ' <span class="muted">(선택 · 비워두면 제출 안 됨)</span>' : ''}</h3>` : ''}
+          ${nameFieldsHtml(cat, prefix).name}
+          ${
+            cat.freeNaming
+              ? ''
+              : `${trademarkLinksHtml(null, `${prefix}Kipris`, `${prefix}WebSearch`)}
+          <div class="grid-2">
+            <label class="field"><span>구분</span>
+              <select id="${prefix}Kind"><option>순수한글</option><option>한자</option></select>
+            </label>
+          </div>`
+          }
+          ${nameFieldsHtml(cat, prefix).eng}
+          <label class="field"><span>이름 설명 (한두 줄, 필수)</span><textarea id="${prefix}Desc" maxlength="200" rows="2" placeholder="이 이름을 제안한 이유나 의미를 간단히 적어주세요"></textarea></label>
+        </div>`,
+          )
+          .join('')}
         <div id="pErr"></div>
-        <button class="btn-primary btn-lg btn-block" id="pSubmit">${cat.pairLabels ? '이 세트 제안하기' : '이 이름 제안하기'}</button>
+        <button class="btn-primary btn-lg btn-block" id="pSubmit">${
+          slotPrefixes.length > 1 ? '제안하기' : cat.pairLabels ? '이 세트 제안하기' : '이 이름 제안하기'
+        }</button>
       </div>`
       }
       <div class="btn-row mt">
@@ -411,7 +424,7 @@ function renderProposeForm(categoryId) {
   document.getElementById('pOtherCat')?.addEventListener('click', goGrid);
   document.getElementById('pDone')?.addEventListener('click', goGrid);
 
-  for (const prefix of ['p', 'e']) {
+  for (const prefix of [...slotPrefixes, 'e']) {
     const inputs = cat.pairLabels
       ? cat.pairLabels.map((_, i) => document.getElementById(`${prefix}Name${i}`))
       : [document.getElementById(`${prefix}Name`)];
@@ -425,28 +438,39 @@ function renderProposeForm(categoryId) {
 
   const submitBtn = document.getElementById('pSubmit');
   submitBtn?.addEventListener('click', async () => {
-    const nf = readNameFields(cat, 'p');
-    const { name, english } = nf;
-    const kind = document.getElementById('pKind')?.value || '';
-    const description = document.getElementById('pDesc').value.trim();
     const errBox = document.getElementById('pErr');
-    if (nf.error) {
-      errBox.innerHTML = `<div class="notice err">${esc(nf.error)}</div>`;
-      return;
-    }
-    if (!description) {
-      errBox.innerHTML = `<div class="notice err">이름에 대한 간단한 설명을 입력하세요.</div>`;
-      return;
+    const showErr = (msg) => (errBox.innerHTML = `<div class="notice err">${esc(msg)}</div>`);
+    const multi = slotPrefixes.length > 1;
+    // 칸마다 읽고 검증. 첫 칸 외에는 완전히 비어 있으면 건너뛴다.
+    const entries = [];
+    for (const [i, prefix] of slotPrefixes.entries()) {
+      const label = multi ? `세트 ${mine.count + i + 1}: ` : '';
+      const fields = [...document.querySelectorAll(`[id^="${prefix}Name"], [id^="${prefix}Eng"], #${prefix}Desc`)];
+      if (i > 0 && fields.every((el) => !el.value.trim())) continue;
+      const nf = readNameFields(cat, prefix);
+      if (nf.error) return showErr(label + nf.error);
+      const description = document.getElementById(`${prefix}Desc`).value.trim();
+      if (!description) return showErr(label + '이름에 대한 간단한 설명을 입력하세요.');
+      const kind = document.getElementById(`${prefix}Kind`)?.value || '';
+      entries.push({ name: nf.name, english: nf.english, kind, description });
     }
     submitBtn.disabled = true;
     errBox.innerHTML = '';
+    let done = 0;
     try {
-      const r = await api('/api/propose', { body: { voterNumber: proposeNumber, categoryId, name, kind, english, description } });
-      proposeMine = r.mine;
+      for (const body of entries) {
+        const r = await api('/api/propose', { body: { voterNumber: proposeNumber, categoryId, ...body } });
+        proposeMine = r.mine;
+        done++;
+      }
       renderProposeForm(categoryId);
     } catch (e) {
-      errBox.innerHTML = `<div class="notice err">${esc(e.message)}</div>`;
-      submitBtn.disabled = false;
+      // 일부만 접수됐으면 목록을 갱신해서 보여주고 오류를 이어서 표시
+      if (done > 0) renderProposeForm(categoryId);
+      const box = document.getElementById('pErr');
+      if (box) box.innerHTML = `<div class="notice err">${esc(e.message)}</div>`;
+      const btn = document.getElementById('pSubmit');
+      if (btn) btn.disabled = false;
     }
   });
 

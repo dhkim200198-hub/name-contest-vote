@@ -318,6 +318,21 @@ button:disabled {
   margin: 6px 0 0;
 }
 
+.set-slot {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px 4px;
+  margin-bottom: 14px;
+}
+.set-slot h3 {
+  margin: 0 0 10px;
+  font-size: 1rem;
+}
+.set-slot h3 .muted {
+  font-size: 0.85rem;
+  font-weight: normal;
+}
+
 /* ---------- 후보 카드 (투표) ---------- */
 .cand {
   border: 1px solid var(--border);

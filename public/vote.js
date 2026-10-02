@@ -89,7 +89,7 @@ function nameFieldsHtml(cat, prefix, n = null) {
       .map((lb, i) => `<label class="field"><span>${esc(lb)} 이름</span><input type="text" id="${prefix}Name${i}" maxlength="28" ${attr(names, i, 0)} /></label>`)
       .join('')}</div>`,
     eng: `<div class="grid-2">${cat.pairLabels
-      .map((lb, i) => `<label class="field"><span>${esc(lb)} 영문 표기 (필수)</span><input type="text" id="${prefix}Eng${i}" maxlength="38" ${attr(engs, i, 1)} /></label>`)
+      .map((lb, i) => `<label class="field"><span>${esc(lb)} 영문 표기 (${cat.freeNaming ? '선택' : '필수'})</span><input type="text" id="${prefix}Eng${i}" maxlength="38" ${attr(engs, i, 1)} /></label>`)
       .join('')}</div>`,
   };
 }
@@ -108,11 +108,24 @@ function readNameFields(cat, prefix) {
   for (let i = 0; i < names.length; i++) {
     if (!names[i]) return { error: `${cat.pairLabels[i]} 이름을 입력하세요.` };
   }
-  for (let i = 0; i < engs.length; i++) {
+  for (let i = 0; i < engs.length && !cat.freeNaming; i++) {
     if (!engs[i]) return { error: `${cat.pairLabels[i]} 영문 표기를 입력하세요.` };
   }
   if ([...names, ...engs].some((v) => v.includes('/'))) return { error: '이름에 "/" 문자는 쓸 수 없습니다.' };
-  return { name: names.join(PAIR_SEP), english: engs.join(PAIR_SEP) };
+  // 영문 표기가 선택인 항목은 전부 비웠으면 빈 값으로 보낸다
+  return { name: names.join(PAIR_SEP), english: engs.some(Boolean) ? engs.join(PAIR_SEP) : '' };
+}
+// 항목 전용 공지 (회의실 등)
+function catNoticeHtml(cat) {
+  if (!cat.notice?.length) return '';
+  return `<div class="notice cat-notice mt">
+    <b>📢 ${esc(cat.name)} 이름 안내</b>
+    ${cat.notice.map((t) => `<p>${esc(t)}</p>`).join('')}
+  </div>`;
+}
+// 이름 구분(순수한글/한자) 뱃지 — 자유 작명 항목은 구분이 없어 생략
+function kindTag(kind) {
+  return kind ? `<span class="tag ${kind === '한자' ? 'hanja' : 'hangul'}">${esc(kind)}</span>` : '';
 }
 // 웹검색 링크용 현재 입력 이름
 function currentSearchName(cat, prefix) {
@@ -169,6 +182,7 @@ function actionFor(cat) {
 }
 
 function renderGrid() {
+  const freeCats = st.categories.filter((c) => c.freeNaming);
   view.innerHTML = `
     <div class="card">
       <h2>이름 공모전 안내</h2>
@@ -177,6 +191,7 @@ function renderGrid() {
         준비 중인 항목은 각자 <b>본인 번호</b>를 입력해 이름을 <b>최대 ${st.maxProposalsPerCategory}개</b>까지 제안할 수 있고,
         투표가 시작된 항목은 1차·2차 투표에 참여할 수 있습니다.
         제안하는 이름은 <b>순수한글 또는 한자(漢字) 기반</b>이어야 하며, 순수한글인 경우 영문 표기가 자연스러운 것이 좋습니다.
+        ${freeCats.length ? `(단, <b>${freeCats.map((c) => esc(c.name)).join(', ')}</b>은 자유롭게 지을 수 있습니다 — 해당 항목 안내 참고)` : ''}
       </p>
       <p class="hint">
         📅 <b>이름 접수는 9월 30일까지</b> 마감하며, <b>10월 1일 전체 인원이 모여 1차·2차 투표를 진행</b>합니다.
@@ -233,19 +248,24 @@ function renderProposeIntro(categoryId) {
         회사에서 새로 지어야 할 이름 ${st.categories.length}가지를 사내 공모전으로 정합니다. 지금은 <b>이름 제안(준비) 단계</b>이며,
         이 단계에서 직원 누구나 <b>본인 번호</b>를 입력해 원하는 이름을 <b>항목당 최대 ${st.maxProposalsPerCategory}개</b>까지 제안할 수 있습니다(1개만 제안해도 됩니다).
         <b>각 항목은 그 항목의 1차 투표가 시작되면 그 항목의 이름 제안만 마감</b>되고(다른 항목은 영향받지 않습니다), 그 뒤로는 제안된 이름들로만 투표가 진행됩니다.
-        제안하는 이름은 <b>순수한글 또는 한자(漢字) 기반</b>이어야 하며, 순수한글인 경우 영문 표기가 자연스러운 것이 좋습니다.
-        상표(商標) 중복 여부는 <b>제안하는 본인이 미리 확인</b>해 주세요.
+        ${
+          cat.freeNaming
+            ? '이 항목은 이름 형식 제한 없이 자유롭게 제안할 수 있습니다. 아래 항목 안내를 꼭 읽어 주세요.'
+            : `제안하는 이름은 <b>순수한글 또는 한자(漢字) 기반</b>이어야 하며, 순수한글인 경우 영문 표기가 자연스러운 것이 좋습니다.
+        상표(商標) 중복 여부는 <b>제안하는 본인이 미리 확인</b>해 주세요.`
+        }
       </p>
       <p class="hint">
         📅 <b>이름 접수는 9월 30일까지</b> 마감하며, <b>10월 1일 전체 인원이 모여 1차·2차 투표를 진행</b>합니다.
       </p>
-      ${trademarkLinksHtml(null, 'introKipris', 'introWebSearch')}
+      ${cat.freeNaming ? '' : trademarkLinksHtml(null, 'introKipris', 'introWebSearch')}
     </div>
     <div class="card">
       <h2>지금 제안할 항목: ${esc(cat.name)}</h2>
       <p class="hint">${esc(cat.description)}</p>
       ${cat.examples?.length ? `<p class="muted">유사 사례: ${cat.examples.map(esc).join(', ')}</p>` : ''}
-      ${cat.pairLabels ? `<p class="notice ok">이 항목은 <b>${esc(cat.pairLabels.join('·'))} 이름을 한 세트</b>로 제안합니다. 제안 1개 = ${esc(cat.pairLabels.join(' + '))} 이름 한 쌍이며, 투표도 세트 단위로 진행됩니다.</p>` : ''}
+      ${catNoticeHtml(cat)}
+      ${cat.pairLabels ? `<p class="notice ok mt">이 항목은 <b>${esc(cat.pairLabels.join('·'))} 이름을 한 세트</b>로 제안합니다. 제안 1개 = ${esc(cat.pairLabels.join(' + '))} 이름 한 쌍이며, 투표도 세트 단위로 진행됩니다.</p>` : ''}
       ${cat.prize > 0 ? `<p class="hint">🏆 최종 선정 시 상금 <b>${won(cat.prize)}</b></p>` : ''}
       <button class="btn-primary btn-lg btn-block mt" id="proposeGo">확인했습니다, 이름 제안하기</button>
     </div>`;
@@ -316,6 +336,7 @@ function renderProposeForm(categoryId) {
     <div class="card">
       <h2>${esc(cat.name)} · 이름 제안</h2>
       <p class="hint"><span class="tag">내 번호 ${proposeNumber}번</span> · 이 항목 제안 ${mine.count} / 최대 ${max}개 (1개만 제안해도 됩니다)</p>
+      ${catNoticeHtml(cat)}
       ${
         mine.names.length
           ? `<div class="rankpanel"><b>내가 제안한 이름</b><ol>${mine.names
@@ -324,7 +345,10 @@ function renderProposeForm(categoryId) {
                   ? `<li class="rankrow" id="editRow-${n.id}">
                       <div class="mt" style="width:100%">
                         ${nameFieldsHtml(cat, 'e', n).name}
-                        ${trademarkLinksHtml(null, 'eKipris', 'eWebSearch')}
+                        ${
+                          cat.freeNaming
+                            ? ''
+                            : `${trademarkLinksHtml(null, 'eKipris', 'eWebSearch')}
                         <div class="grid-2">
                           <label class="field"><span>구분</span>
                             <select id="eKind">
@@ -332,7 +356,8 @@ function renderProposeForm(categoryId) {
                               <option ${n.kind === '한자' ? 'selected' : ''}>한자</option>
                             </select>
                           </label>
-                        </div>
+                        </div>`
+                        }
                         ${nameFieldsHtml(cat, 'e', n).eng}
                         <label class="field"><span>이름 설명 (한두 줄, 필수)</span><textarea id="eDesc" maxlength="200" rows="2">${esc(n.description || '')}</textarea></label>
                         <div id="eErr"></div>
@@ -344,7 +369,7 @@ function renderProposeForm(categoryId) {
                     </li>`
                   : `<li class="rankrow" style="align-items:flex-start">
                       <div style="flex:1">
-                        <div><span class="who">${esc(n.name)}</span> <span class="tag ${n.kind === '한자' ? 'hanja' : 'hangul'}">${esc(n.kind)}</span></div>
+                        <div><span class="who">${esc(n.name)}</span> ${kindTag(n.kind)}</div>
                         ${n.english ? `<div class="muted">${esc(n.english)}</div>` : ''}
                         ${n.description ? `<div class="muted">${esc(n.description)}</div>` : ''}
                       </div>
@@ -361,12 +386,16 @@ function renderProposeForm(categoryId) {
           : `
       <div class="mt">
         ${nameFieldsHtml(cat, 'p').name}
-        ${trademarkLinksHtml(null, 'pKipris', 'pWebSearch')}
+        ${
+          cat.freeNaming
+            ? ''
+            : `${trademarkLinksHtml(null, 'pKipris', 'pWebSearch')}
         <div class="grid-2">
           <label class="field"><span>구분</span>
             <select id="pKind"><option>순수한글</option><option>한자</option></select>
           </label>
-        </div>
+        </div>`
+        }
         ${nameFieldsHtml(cat, 'p').eng}
         <label class="field"><span>이름 설명 (한두 줄, 필수)</span><textarea id="pDesc" maxlength="200" rows="2" placeholder="이 이름을 제안한 이유나 의미를 간단히 적어주세요"></textarea></label>
         <div id="pErr"></div>
@@ -388,7 +417,8 @@ function renderProposeForm(categoryId) {
       : [document.getElementById(`${prefix}Name`)];
     inputs.filter(Boolean).forEach((inp) =>
       inp.addEventListener('input', () => {
-        document.getElementById(`${prefix}WebSearch`).href = webSearchUrl(currentSearchName(cat, prefix));
+        const link = document.getElementById(`${prefix}WebSearch`); // 자유 작명 항목엔 상표 링크가 없음
+        if (link) link.href = webSearchUrl(currentSearchName(cat, prefix));
       }),
     );
   }
@@ -397,7 +427,7 @@ function renderProposeForm(categoryId) {
   submitBtn?.addEventListener('click', async () => {
     const nf = readNameFields(cat, 'p');
     const { name, english } = nf;
-    const kind = document.getElementById('pKind').value;
+    const kind = document.getElementById('pKind')?.value || '';
     const description = document.getElementById('pDesc').value.trim();
     const errBox = document.getElementById('pErr');
     if (nf.error) {
@@ -452,7 +482,7 @@ function renderProposeForm(categoryId) {
   document.getElementById('eSave')?.addEventListener('click', async () => {
     const nf = readNameFields(cat, 'e');
     const { name, english } = nf;
-    const kind = document.getElementById('eKind').value;
+    const kind = document.getElementById('eKind')?.value || '';
     const description = document.getElementById('eDesc').value.trim();
     const errBox = document.getElementById('eErr');
     if (nf.error) {
@@ -713,7 +743,7 @@ function paint() {
       <div class="cand ${isPicked ? 'picked' : ''}">
         <div>
           <span class="name">${esc(c.name)}</span>${c.english ? `<span class="eng">${esc(c.english)}</span>` : ''}
-          <span class="tag ${c.kind === '한자' ? 'hanja' : 'hangul'}">${esc(c.kind)}</span>
+          ${kindTag(c.kind)}
           ${c.description ? `<div class="muted">${esc(c.description)}</div>` : ''}
         </div>
         <div class="right">

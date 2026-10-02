@@ -392,7 +392,7 @@ function candidatesCard(cat) {
         <h2 style="font-size:1rem">이름 직접 추가 (관리자)</h2>
         <div class="btn-row" style="margin-bottom:8px">
           <input type="text" id="newName" placeholder="이름" style="flex:1 1 160px" />
-          <select id="newKind" style="flex:0 1 110px">${KINDS.map((k) => `<option>${k}</option>`).join('')}</select>
+          ${cat.freeNaming ? '' : `<select id="newKind" style="flex:0 1 110px">${KINDS.map((k) => `<option>${k}</option>`).join('')}</select>`}
           <input type="text" id="newEnglish" placeholder="영문 표기" style="flex:1 1 140px" />
         </div>
         <div class="btn-row" style="margin-bottom:8px">
@@ -413,7 +413,7 @@ function wireCandidatesCard(root, cat) {
       <div class="row1">
         <div class="idx">${i + 1}</div>
         <input type="text" data-f="name" placeholder="이름" value="${esc(c.name)}" />
-        <select data-f="kind">${KINDS.map((k) => `<option ${c.kind === k ? 'selected' : ''}>${k}</option>`).join('')}</select>
+        ${cat.freeNaming ? '' : `<select data-f="kind">${KINDS.map((k) => `<option ${c.kind === k ? 'selected' : ''}>${k}</option>`).join('')}</select>`}
         <input type="text" data-f="english" placeholder="영문 표기" value="${esc(c.english)}" />
       </div>
       <input type="text" data-f="description" placeholder="이름 설명 (한두 줄)" value="${esc(c.description || '')}" style="width:100%;margin-top:6px" />
@@ -432,7 +432,7 @@ function wireCandidatesCard(root, cat) {
       return {
         id: el.dataset.id,
         name: get('name').value.trim(),
-        kind: get('kind').value,
+        kind: get('kind')?.value,
         english: get('english').value.trim(),
         description: get('description').value.trim(),
         hidden: get('hidden').checked,
@@ -459,7 +459,7 @@ function wireCandidatesCard(root, cat) {
       method: 'POST',
       body: {
         name,
-        kind: document.getElementById('newKind').value,
+        kind: document.getElementById('newKind')?.value,
         english: document.getElementById('newEnglish').value.trim(),
         description: document.getElementById('newDesc').value.trim(),
         proposer: document.getElementById('newProposer').value ? Number(document.getElementById('newProposer').value) : null,

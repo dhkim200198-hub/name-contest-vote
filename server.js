@@ -214,6 +214,8 @@ function categorySummary(cat) {
     examples: cat.examples,
     prize: cat.prize,
     pairLabels: cat.pairLabels,
+    freeNaming: cat.freeNaming,
+    notice: cat.notice,
     phase: cat.phase,
     activeRound: round,
   };
@@ -286,6 +288,8 @@ app.get('/api/category/:id', (req, res) => {
     examples: cat.examples,
     prize: cat.prize,
     pairLabels: cat.pairLabels,
+    freeNaming: cat.freeNaming,
+    notice: cat.notice,
     phase: cat.phase,
     expectedVoters: Number(d.config.expectedVoters) || 0,
     useVoterNumbers: numberMode(d),
@@ -300,17 +304,25 @@ app.get('/api/category/:id', (req, res) => {
 });
 
 /* ---- 이름 제안 (준비 단계) ---- */
-// 세트형 항목(회의실 등): name/english 모두 "A / B" 처럼 pairLabels 개수만큼 채워져 있어야 한다
+// 세트형 항목(회의실 등): name 은 "A / B" 처럼 pairLabels 개수만큼 채워져 있어야 한다.
+// english 는 영문 표기가 선택(freeNaming)이면 비워도 되고, 일부 칸만 채워도 된다.
 function checkPair(cat, name, english) {
   if (!cat.pairLabels) return null;
   const n = cat.pairLabels.length;
-  const ok = (v) => {
-    const parts = v.split(store.PAIR_SEP).map((x) => x.trim());
-    return parts.length === n && parts.every(Boolean);
-  };
-  if (!ok(name)) return `${cat.pairLabels.join('·')} 이름을 모두 입력하세요.`;
-  if (!ok(english)) return `${cat.pairLabels.join('·')} 영문 표기를 모두 입력하세요.`;
+  const parts = (v) => v.split(store.PAIR_SEP).map((x) => x.trim());
+  if (parts(name).length !== n || !parts(name).every(Boolean)) return `${cat.pairLabels.join('·')} 이름을 모두 입력하세요.`;
+  if (cat.freeNaming) {
+    if (english && parts(english).length !== n) return '영문 표기 형식이 올바르지 않습니다.';
+    return null;
+  }
+  if (parts(english).length !== n || !parts(english).every(Boolean)) return `${cat.pairLabels.join('·')} 영문 표기를 모두 입력하세요.`;
   return null;
+}
+// 이름 구분(순수한글/한자) — 자유 작명 항목은 구분 없음
+const KINDS = new Set(['순수한글', '한자']);
+function kindFor(cat, raw) {
+  if (cat.freeNaming) return '';
+  return KINDS.has(raw) ? raw : '순수한글';
 }
 
 app.post('/api/propose/check', (req, res) => {
@@ -332,13 +344,12 @@ app.post('/api/propose', (req, res) => {
   if (chk.error) return res.status(409).json({ error: chk.error });
   const n = chk.n;
 
-  const KINDS = new Set(['순수한글', '한자']);
   const name = String(req.body?.name || '').trim().slice(0, 60);
-  const kind = KINDS.has(req.body?.kind) ? req.body.kind : '순수한글';
+  const kind = kindFor(cat, req.body?.kind);
   const english = String(req.body?.english || '').trim().slice(0, 80);
   const description = String(req.body?.description || '').trim().slice(0, 200);
   if (!name) return res.status(400).json({ error: '이름을 입력하세요.' });
-  if (!english) return res.status(400).json({ error: '영문 표기를 입력하세요.' });
+  if (!english && !cat.freeNaming) return res.status(400).json({ error: '영문 표기를 입력하세요.' });
   if (!description) return res.status(400).json({ error: '이름에 대한 간단한 설명을 입력하세요.' });
   const pairErr = checkPair(cat, name, english);
   if (pairErr) return res.status(400).json({ error: pairErr });
@@ -381,13 +392,12 @@ app.put('/api/propose', (req, res) => {
   const n = chk.n;
 
   const candidateId = String(req.body?.candidateId || '');
-  const KINDS = new Set(['순수한글', '한자']);
   const name = String(req.body?.name || '').trim().slice(0, 60);
-  const kind = KINDS.has(req.body?.kind) ? req.body.kind : '순수한글';
+  const kind = kindFor(cat, req.body?.kind);
   const english = String(req.body?.english || '').trim().slice(0, 80);
   const description = String(req.body?.description || '').trim().slice(0, 200);
   if (!name) return res.status(400).json({ error: '이름을 입력하세요.' });
-  if (!english) return res.status(400).json({ error: '영문 표기를 입력하세요.' });
+  if (!english && !cat.freeNaming) return res.status(400).json({ error: '영문 표기를 입력하세요.' });
   if (!description) return res.status(400).json({ error: '이름에 대한 간단한 설명을 입력하세요.' });
   const pairErr = checkPair(cat, name, english);
   if (pairErr) return res.status(400).json({ error: pairErr });
@@ -650,10 +660,9 @@ app.put('/api/admin/category/:id/phase', requireAdmin, (req, res) => {
 app.post('/api/admin/category/:id/candidates', requireAdmin, (req, res) => {
   const cat = store.getCategory(req.params.id);
   if (!cat) return res.status(404).json({ error: '알 수 없는 항목입니다.' });
-  const KINDS = new Set(['순수한글', '한자']);
   const name = String(req.body?.name || '').trim().slice(0, 60);
   if (!name) return res.status(400).json({ error: '이름을 입력하세요.' });
-  const kind = KINDS.has(req.body?.kind) ? req.body.kind : '순수한글';
+  const kind = kindFor(cat, req.body?.kind);
   const english = String(req.body?.english || '').trim().slice(0, 80);
   const description = String(req.body?.description || '').trim().slice(0, 200);
   const proposerRaw = Number(req.body?.proposer);
@@ -673,7 +682,6 @@ app.put('/api/admin/category/:id/candidates', requireAdmin, (req, res) => {
   if (!cat) return res.status(404).json({ error: '알 수 없는 항목입니다.' });
   const list = req.body?.candidates;
   if (!Array.isArray(list)) return res.status(400).json({ error: 'candidates 배열이 필요합니다.' });
-  const KINDS = new Set(['순수한글', '한자']);
   store.mutate((data) => {
     const c = data.categories.find((x) => x.id === req.params.id);
     const byId = new Map(c.candidates.map((x) => [x.id, x]));
@@ -681,7 +689,7 @@ app.put('/api/admin/category/:id/candidates', requireAdmin, (req, res) => {
       const cand = byId.get(inp.id);
       if (!cand) continue;
       if (typeof inp.name === 'string' && inp.name.trim()) cand.name = inp.name.trim().slice(0, 60);
-      if (KINDS.has(inp.kind)) cand.kind = inp.kind;
+      if (!c.freeNaming && KINDS.has(inp.kind)) cand.kind = inp.kind;
       if (typeof inp.english === 'string') cand.english = inp.english.slice(0, 80);
       if (typeof inp.description === 'string') cand.description = inp.description.slice(0, 200);
       if (typeof inp.hidden === 'boolean') cand.hidden = inp.hidden;

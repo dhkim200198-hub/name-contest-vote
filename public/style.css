@@ -309,6 +309,15 @@ button:disabled {
   background: color-mix(in srgb, var(--good) 10%, var(--surface));
 }
 
+.notice.cat-notice {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--warn) 55%, transparent);
+  background: color-mix(in srgb, var(--warn) 10%, var(--surface));
+}
+.notice.cat-notice p {
+  margin: 6px 0 0;
+}
+
 /* ---------- 후보 카드 (투표) ---------- */
 .cand {
   border: 1px solid var(--border);

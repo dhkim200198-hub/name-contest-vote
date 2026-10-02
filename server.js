@@ -665,8 +665,10 @@ app.post('/api/admin/category/:id/candidates', requireAdmin, (req, res) => {
   const kind = kindFor(cat, req.body?.kind);
   const english = String(req.body?.english || '').trim().slice(0, 80);
   const description = String(req.body?.description || '').trim().slice(0, 200);
-  const proposerRaw = Number(req.body?.proposer);
-  const proposer = Number.isInteger(proposerRaw) ? proposerRaw : null;
+  // 비워두면 null (Number(null) === 0 이라 먼저 걸러야 함)
+  const rawProposer = req.body?.proposer;
+  const proposerNum = rawProposer == null || rawProposer === '' ? NaN : Number(rawProposer);
+  const proposer = Number.isInteger(proposerNum) && proposerNum >= 1 ? proposerNum : null;
 
   let created = null;
   store.mutate((data) => {

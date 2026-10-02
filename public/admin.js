@@ -385,7 +385,7 @@ function candidatesCard(cat) {
   return `
     <div class="card">
       <h2>제안된 이름 ${cat.candidates.length}개</h2>
-      <p class="hint">직원들이 준비 단계에서 직접 제안한 이름입니다. 상표 중복 등은 제안자 책임이며, 스팸·중복은 여기서 숨기거나 삭제하세요.</p>
+      <p class="hint">직원들이 준비 단계에서 직접 제안한 이름입니다. ${cat.freeNaming ? '' : '상표 중복 등은 제안자 책임이며, '}스팸·중복은 여기서 숨기거나 삭제하세요.</p>
       <div id="cands"></div>
       <button class="btn-primary btn-lg" id="saveCands">변경 사항 저장</button>
       <div class="card" style="margin-top:16px;background:transparent">

@@ -265,7 +265,7 @@ function renderProposeIntro(categoryId) {
       <p class="hint">${esc(cat.description)}</p>
       ${cat.examples?.length ? `<p class="muted">유사 사례: ${cat.examples.map(esc).join(', ')}</p>` : ''}
       ${catNoticeHtml(cat)}
-      ${cat.pairLabels ? `<p class="notice ok mt">이 항목은 <b>${esc(cat.pairLabels.join('·'))} 이름을 한 세트</b>로 제안합니다. 제안 1개 = ${esc(cat.pairLabels.join(' + '))} 이름 한 쌍이며, 투표도 세트 단위로 진행됩니다.</p>` : ''}
+      ${cat.pairLabels ? `<p class="notice ok mt">이 항목은 <b>${esc(cat.pairLabels.join('·'))} 이름을 한 세트</b>로 제안합니다. 제안 1개 = ${esc(cat.pairLabels.join(' + '))} 이름 한 쌍이며, <b>1인당 최대 ${st.maxProposalsPerCategory}세트</b>까지 제안할 수 있습니다(1세트만 제안해도 됩니다). 투표도 세트 단위로 진행됩니다.</p>` : ''}
       ${cat.prize > 0 ? `<p class="hint">🏆 최종 선정 시 상금 <b>${won(cat.prize)}</b></p>` : ''}
       <button class="btn-primary btn-lg btn-block mt" id="proposeGo">확인했습니다, 이름 제안하기</button>
     </div>`;
@@ -335,7 +335,7 @@ function renderProposeForm(categoryId) {
   view.innerHTML = `
     <div class="card">
       <h2>${esc(cat.name)} · 이름 제안</h2>
-      <p class="hint"><span class="tag">내 번호 ${proposeNumber}번</span> · 이 항목 제안 ${mine.count} / 최대 ${max}개 (1개만 제안해도 됩니다)</p>
+      <p class="hint"><span class="tag">내 번호 ${proposeNumber}번</span> · 이 항목 제안 ${mine.count} / 최대 ${max}${cat.pairLabels ? '세트' : '개'} (${cat.pairLabels ? '1세트' : '1개'}만 제안해도 됩니다)</p>
       ${catNoticeHtml(cat)}
       ${
         mine.names.length

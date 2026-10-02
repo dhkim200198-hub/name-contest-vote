@@ -194,7 +194,7 @@ function renderGrid() {
         ${freeCats.length ? `(단, <b>${freeCats.map((c) => esc(c.name)).join(', ')}</b>은 자유롭게 지을 수 있습니다 — 해당 항목 안내 참고)` : ''}
       </p>
       <p class="hint">
-        📅 <b>이름 접수는 9월 30일까지</b> 마감하며, <b>10월 1일 전체 인원이 모여 1차·2차 투표를 진행</b>합니다.
+        📅 <b>이름 접수는 10월 7일(수)까지</b> 마감하며, <b>10월 9일(금) 전체 인원이 모여 1차·2차 투표를 진행</b>합니다.
       </p>
     </div>
     <div class="catgrid">
@@ -256,7 +256,7 @@ function renderProposeIntro(categoryId) {
         }
       </p>
       <p class="hint">
-        📅 <b>이름 접수는 9월 30일까지</b> 마감하며, <b>10월 1일 전체 인원이 모여 1차·2차 투표를 진행</b>합니다.
+        📅 <b>이름 접수는 10월 7일(수)까지</b> 마감하며, <b>10월 9일(금) 전체 인원이 모여 1차·2차 투표를 진행</b>합니다.
       </p>
       ${cat.freeNaming ? '' : trademarkLinksHtml(null, 'introKipris', 'introWebSearch')}
     </div>

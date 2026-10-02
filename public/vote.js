@@ -52,6 +52,77 @@ function hasVoted(categoryId, round) {
 
 let st = null; // /api/state 결과 (전역 + 항목 요약)
 
+// 같은 상금끼리 묶어 "4개 항목 각 50만원 · 회의실 20만원" 형태로 요약
+function prizeSummary(categories) {
+  const groups = new Map();
+  for (const c of categories) {
+    if (!(c.prize > 0)) continue;
+    if (!groups.has(c.prize)) groups.set(c.prize, []);
+    groups.get(c.prize).push(c.name);
+  }
+  return [...groups]
+    .map(([amt, names]) => (names.length > 1 ? `${names.length}개 항목 각 ${won(amt)}` : `${names[0]} ${won(amt)}`))
+    .join(' · ');
+}
+
+const PAIR_SEP = ' / ';
+// 세트형 항목(회의실)은 이름·영문 표기를 칸별로 받아 "A / B" 로 합친다
+function nameFieldsHtml(cat, prefix, n = null) {
+  if (!cat.pairLabels) {
+    return n
+      ? {
+          name: `<label class="field"><span>이름</span><input type="text" id="${prefix}Name" maxlength="60" value="${esc(n.name)}" /></label>`,
+          eng: `<label class="field"><span>영문 표기 (필수)</span><input type="text" id="${prefix}Eng" maxlength="80" value="${esc(n.english || '')}" /></label>`,
+        }
+      : {
+          name: `<label class="field"><span>제안할 이름</span><input type="text" id="${prefix}Name" maxlength="60" placeholder="예: 누리" /></label>`,
+          eng: `<label class="field"><span>영문 표기 (필수)</span><input type="text" id="${prefix}Eng" maxlength="80" placeholder="예: Nuri" /></label>`,
+        };
+  }
+  const names = n ? n.name.split(PAIR_SEP) : [];
+  const engs = n ? (n.english || '').split(PAIR_SEP) : [];
+  const ph = [['누리', 'Nuri'], ['마루', 'Maru']];
+  const attr = (vals, i, k) =>
+    n ? `value="${esc((vals[i] || '').trim())}"` : `placeholder="예: ${esc(ph[i]?.[k] || '')}"`;
+  return {
+    name: `<div class="grid-2">${cat.pairLabels
+      .map((lb, i) => `<label class="field"><span>${esc(lb)} 이름</span><input type="text" id="${prefix}Name${i}" maxlength="28" ${attr(names, i, 0)} /></label>`)
+      .join('')}</div>`,
+    eng: `<div class="grid-2">${cat.pairLabels
+      .map((lb, i) => `<label class="field"><span>${esc(lb)} 영문 표기 (필수)</span><input type="text" id="${prefix}Eng${i}" maxlength="38" ${attr(engs, i, 1)} /></label>`)
+      .join('')}</div>`,
+  };
+}
+// 입력값 읽기 → { name, english } 또는 { error }
+function readNameFields(cat, prefix) {
+  const val = (id) => document.getElementById(id).value.trim();
+  if (!cat.pairLabels) {
+    const name = val(`${prefix}Name`);
+    const english = val(`${prefix}Eng`);
+    if (!name) return { error: '이름을 입력하세요.' };
+    if (!english) return { error: '영문 표기를 입력하세요.' };
+    return { name, english };
+  }
+  const names = cat.pairLabels.map((_, i) => val(`${prefix}Name${i}`));
+  const engs = cat.pairLabels.map((_, i) => val(`${prefix}Eng${i}`));
+  for (let i = 0; i < names.length; i++) {
+    if (!names[i]) return { error: `${cat.pairLabels[i]} 이름을 입력하세요.` };
+  }
+  for (let i = 0; i < engs.length; i++) {
+    if (!engs[i]) return { error: `${cat.pairLabels[i]} 영문 표기를 입력하세요.` };
+  }
+  if ([...names, ...engs].some((v) => v.includes('/'))) return { error: '이름에 "/" 문자는 쓸 수 없습니다.' };
+  return { name: names.join(PAIR_SEP), english: engs.join(PAIR_SEP) };
+}
+// 웹검색 링크용 현재 입력 이름
+function currentSearchName(cat, prefix) {
+  if (!cat.pairLabels) return document.getElementById(`${prefix}Name`).value.trim();
+  return cat.pairLabels
+    .map((_, i) => document.getElementById(`${prefix}Name${i}`).value.trim())
+    .filter(Boolean)
+    .join(' ');
+}
+
 backLink.addEventListener('click', (e) => {
   e.preventDefault();
   goGrid();
@@ -64,8 +135,9 @@ async function init() {
     st = await api('/api/state');
     document.getElementById('title').textContent = st.title;
     document.getElementById('subtitle').textContent = st.subtitle || '';
-    if (st.prize > 0) {
-      document.getElementById('prizeAmt').textContent = won(st.prize);
+    const prizeText = prizeSummary(st.categories);
+    if (prizeText) {
+      document.getElementById('prizeAmt').textContent = prizeText;
       document.getElementById('prize').hidden = false;
     }
     goGrid();
@@ -101,7 +173,7 @@ function renderGrid() {
     <div class="card">
       <h2>이름 공모전 안내</h2>
       <p class="hint">
-        이번 공모전에서는 아래 <b>4개 항목</b>의 이름을 각각 정합니다. 항목마다 진행 단계가 다를 수 있습니다.
+        이번 공모전에서는 아래 <b>${st.categories.length}개 항목</b>의 이름을 각각 정합니다. 항목마다 진행 단계가 다를 수 있습니다.
         준비 중인 항목은 각자 <b>본인 번호</b>를 입력해 이름을 <b>최대 ${st.maxProposalsPerCategory}개</b>까지 제안할 수 있고,
         투표가 시작된 항목은 1차·2차 투표에 참여할 수 있습니다.
         제안하는 이름은 <b>순수한글 또는 한자(漢字) 기반</b>이어야 하며, 순수한글인 경우 영문 표기가 자연스러운 것이 좋습니다.
@@ -121,6 +193,7 @@ function renderGrid() {
           <h3>${esc(cat.name)}</h3>
           <p class="hint">${esc(cat.description)}</p>
           ${cat.examples?.length ? `<p class="muted" style="font-size:.85rem">유사 사례: ${cat.examples.map(esc).join(', ')}</p>` : ''}
+          ${cat.prize > 0 ? `<p style="font-size:.9rem">🏆 상금 <b>${won(cat.prize)}</b>${cat.pairLabels ? ` (${esc(cat.pairLabels.join('·'))} 세트)` : ''}</p>` : ''}
           ${seat}
           <div class="mt">
             ${
@@ -157,7 +230,7 @@ function renderProposeIntro(categoryId) {
     <div class="card">
       <h2>이 투표 시스템은 무엇인가요?</h2>
       <p class="hint">
-        회사에서 새로 지어야 할 이름 4가지를 사내 공모전으로 정합니다. 지금은 <b>이름 제안(준비) 단계</b>이며,
+        회사에서 새로 지어야 할 이름 ${st.categories.length}가지를 사내 공모전으로 정합니다. 지금은 <b>이름 제안(준비) 단계</b>이며,
         이 단계에서 직원 누구나 <b>본인 번호</b>를 입력해 원하는 이름을 <b>항목당 최대 ${st.maxProposalsPerCategory}개</b>까지 제안할 수 있습니다(1개만 제안해도 됩니다).
         <b>각 항목은 그 항목의 1차 투표가 시작되면 그 항목의 이름 제안만 마감</b>되고(다른 항목은 영향받지 않습니다), 그 뒤로는 제안된 이름들로만 투표가 진행됩니다.
         제안하는 이름은 <b>순수한글 또는 한자(漢字) 기반</b>이어야 하며, 순수한글인 경우 영문 표기가 자연스러운 것이 좋습니다.
@@ -172,6 +245,8 @@ function renderProposeIntro(categoryId) {
       <h2>지금 제안할 항목: ${esc(cat.name)}</h2>
       <p class="hint">${esc(cat.description)}</p>
       ${cat.examples?.length ? `<p class="muted">유사 사례: ${cat.examples.map(esc).join(', ')}</p>` : ''}
+      ${cat.pairLabels ? `<p class="notice ok">이 항목은 <b>${esc(cat.pairLabels.join('·'))} 이름을 한 세트</b>로 제안합니다. 제안 1개 = ${esc(cat.pairLabels.join(' + '))} 이름 한 쌍이며, 투표도 세트 단위로 진행됩니다.</p>` : ''}
+      ${cat.prize > 0 ? `<p class="hint">🏆 최종 선정 시 상금 <b>${won(cat.prize)}</b></p>` : ''}
       <button class="btn-primary btn-lg btn-block mt" id="proposeGo">확인했습니다, 이름 제안하기</button>
     </div>`;
   document.getElementById('proposeGo').addEventListener('click', () => renderProposeNumberEntry(categoryId));
@@ -248,7 +323,7 @@ function renderProposeForm(categoryId) {
                 editingCandidateId === n.id
                   ? `<li class="rankrow" id="editRow-${n.id}">
                       <div class="mt" style="width:100%">
-                        <label class="field"><span>이름</span><input type="text" id="eName" maxlength="60" value="${esc(n.name)}" /></label>
+                        ${nameFieldsHtml(cat, 'e', n).name}
                         ${trademarkLinksHtml(null, 'eKipris', 'eWebSearch')}
                         <div class="grid-2">
                           <label class="field"><span>구분</span>
@@ -257,8 +332,8 @@ function renderProposeForm(categoryId) {
                               <option ${n.kind === '한자' ? 'selected' : ''}>한자</option>
                             </select>
                           </label>
-                          <label class="field"><span>영문 표기 (필수)</span><input type="text" id="eEng" maxlength="80" value="${esc(n.english || '')}" /></label>
                         </div>
+                        ${nameFieldsHtml(cat, 'e', n).eng}
                         <label class="field"><span>이름 설명 (한두 줄, 필수)</span><textarea id="eDesc" maxlength="200" rows="2">${esc(n.description || '')}</textarea></label>
                         <div id="eErr"></div>
                         <div class="btn-row mt">
@@ -285,17 +360,17 @@ function renderProposeForm(categoryId) {
           ? `<p class="notice ok mt">이 항목은 이미 ${max}개를 모두 제안했습니다. 마감 전까지는 위 목록에서 수정·삭제할 수 있습니다.</p>`
           : `
       <div class="mt">
-        <label class="field"><span>제안할 이름</span><input type="text" id="pName" maxlength="60" placeholder="예: 누리" /></label>
+        ${nameFieldsHtml(cat, 'p').name}
         ${trademarkLinksHtml(null, 'pKipris', 'pWebSearch')}
         <div class="grid-2">
           <label class="field"><span>구분</span>
             <select id="pKind"><option>순수한글</option><option>한자</option></select>
           </label>
-          <label class="field"><span>영문 표기 (필수)</span><input type="text" id="pEng" maxlength="80" placeholder="예: Nuri" /></label>
         </div>
+        ${nameFieldsHtml(cat, 'p').eng}
         <label class="field"><span>이름 설명 (한두 줄, 필수)</span><textarea id="pDesc" maxlength="200" rows="2" placeholder="이 이름을 제안한 이유나 의미를 간단히 적어주세요"></textarea></label>
         <div id="pErr"></div>
-        <button class="btn-primary btn-lg btn-block" id="pSubmit">이 이름 제안하기</button>
+        <button class="btn-primary btn-lg btn-block" id="pSubmit">${cat.pairLabels ? '이 세트 제안하기' : '이 이름 제안하기'}</button>
       </div>`
       }
       <div class="btn-row mt">
@@ -307,23 +382,26 @@ function renderProposeForm(categoryId) {
   document.getElementById('pOtherCat')?.addEventListener('click', goGrid);
   document.getElementById('pDone')?.addEventListener('click', goGrid);
 
-  document.getElementById('pName')?.addEventListener('input', (e) => {
-    document.getElementById('pWebSearch').href = webSearchUrl(e.target.value.trim());
-  });
+  for (const prefix of ['p', 'e']) {
+    const inputs = cat.pairLabels
+      ? cat.pairLabels.map((_, i) => document.getElementById(`${prefix}Name${i}`))
+      : [document.getElementById(`${prefix}Name`)];
+    inputs.filter(Boolean).forEach((inp) =>
+      inp.addEventListener('input', () => {
+        document.getElementById(`${prefix}WebSearch`).href = webSearchUrl(currentSearchName(cat, prefix));
+      }),
+    );
+  }
 
   const submitBtn = document.getElementById('pSubmit');
   submitBtn?.addEventListener('click', async () => {
-    const name = document.getElementById('pName').value.trim();
+    const nf = readNameFields(cat, 'p');
+    const { name, english } = nf;
     const kind = document.getElementById('pKind').value;
-    const english = document.getElementById('pEng').value.trim();
     const description = document.getElementById('pDesc').value.trim();
     const errBox = document.getElementById('pErr');
-    if (!name) {
-      errBox.innerHTML = `<div class="notice err">이름을 입력하세요.</div>`;
-      return;
-    }
-    if (!english) {
-      errBox.innerHTML = `<div class="notice err">영문 표기를 입력하세요.</div>`;
+    if (nf.error) {
+      errBox.innerHTML = `<div class="notice err">${esc(nf.error)}</div>`;
       return;
     }
     if (!description) {
@@ -367,25 +445,18 @@ function renderProposeForm(categoryId) {
     }),
   );
 
-  document.getElementById('eName')?.addEventListener('input', (e) => {
-    document.getElementById('eWebSearch').href = webSearchUrl(e.target.value.trim());
-  });
   document.getElementById('eCancel')?.addEventListener('click', () => {
     editingCandidateId = null;
     renderProposeForm(categoryId);
   });
   document.getElementById('eSave')?.addEventListener('click', async () => {
-    const name = document.getElementById('eName').value.trim();
+    const nf = readNameFields(cat, 'e');
+    const { name, english } = nf;
     const kind = document.getElementById('eKind').value;
-    const english = document.getElementById('eEng').value.trim();
     const description = document.getElementById('eDesc').value.trim();
     const errBox = document.getElementById('eErr');
-    if (!name) {
-      errBox.innerHTML = `<div class="notice err">이름을 입력하세요.</div>`;
-      return;
-    }
-    if (!english) {
-      errBox.innerHTML = `<div class="notice err">영문 표기를 입력하세요.</div>`;
+    if (nf.error) {
+      errBox.innerHTML = `<div class="notice err">${esc(nf.error)}</div>`;
       return;
     }
     if (!description) {

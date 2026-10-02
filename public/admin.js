@@ -201,8 +201,6 @@ function renderGlobal(root) {
       <h2>공모전 정보</h2>
       <label class="field"><span>제목</span><input type="text" id="title" value="${esc(c.title)}" /></label>
       <label class="field"><span>부제</span><input type="text" id="subtitle" value="${esc(c.subtitle || '')}" /></label>
-      <label class="field" style="max-width:260px"><span>상금 (원, 항목별 각각 수여)</span>
-        <input type="number" id="prize" value="${c.prize}" min="0" step="10000" /></label>
       <button class="btn-primary" id="saveInfo">정보 저장</button>
     </div>`;
 
@@ -244,7 +242,6 @@ function renderGlobal(root) {
       body: {
         title: document.getElementById('title').value,
         subtitle: document.getElementById('subtitle').value,
-        prize: Number(document.getElementById('prize').value),
       },
     });
     await refresh();
@@ -280,6 +277,9 @@ function descCard(cat) {
       <label class="field"><span>항목 이름</span><input type="text" id="catName" value="${esc(cat.name)}" /></label>
       <label class="field"><span>설명</span><textarea id="catDesc" style="min-height:90px">${esc(cat.description)}</textarea></label>
       <label class="field"><span>유사 사례 (쉼표 구분)</span><input type="text" id="catExamples" value="${esc((cat.examples || []).join(', '))}" /></label>
+      <label class="field" style="max-width:260px"><span>상금 (원, 이 항목 최종 선정 이름에 수여)</span>
+        <input type="number" id="catPrize" value="${cat.prize ?? 0}" min="0" step="10000" /></label>
+      ${cat.pairLabels ? `<p class="hint">이 항목은 <b>${esc(cat.pairLabels.join('·'))} 세트</b>로 이름을 받습니다. 후보 이름·영문 표기는 "A / B" 형태로 저장됩니다.</p>` : ''}
       <button class="btn-primary" id="saveDesc">설명 저장</button>
     </div>`;
 }
@@ -291,6 +291,7 @@ function wireDescCard(root, cat) {
         name: document.getElementById('catName').value,
         description: document.getElementById('catDesc').value,
         examples: document.getElementById('catExamples').value.split(',').map((s) => s.trim()).filter(Boolean),
+        prize: Number(document.getElementById('catPrize').value),
       },
     });
     await refresh();

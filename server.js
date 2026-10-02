@@ -180,7 +180,7 @@ function buildResults(cat) {
     id: cat.id,
     name: cat.name,
     phase: cat.phase,
-    prize: cfg.prize,
+    prize: cat.prize,
     expectedVoters: expected,
     combineRatio: { round1: w1, round2: w2 }, // 각 라운드 100점 환산 후 이 비율로 합산
     round1: {
@@ -212,6 +212,8 @@ function categorySummary(cat) {
     name: cat.name,
     description: cat.description,
     examples: cat.examples,
+    prize: cat.prize,
+    pairLabels: cat.pairLabels,
     phase: cat.phase,
     activeRound: round,
   };
@@ -265,7 +267,6 @@ app.get('/api/state', (req, res) => {
   res.json({
     title: cfg.title,
     subtitle: cfg.subtitle,
-    prize: cfg.prize,
     expectedVoters: Number(cfg.expectedVoters) || 0,
     useVoterNumbers: numberMode(d),
     maxProposalsPerCategory: Number(cfg.maxProposalsPerCategory) || 2,
@@ -283,6 +284,8 @@ app.get('/api/category/:id', (req, res) => {
     name: cat.name,
     description: cat.description,
     examples: cat.examples,
+    prize: cat.prize,
+    pairLabels: cat.pairLabels,
     phase: cat.phase,
     expectedVoters: Number(d.config.expectedVoters) || 0,
     useVoterNumbers: numberMode(d),
@@ -297,6 +300,19 @@ app.get('/api/category/:id', (req, res) => {
 });
 
 /* ---- 이름 제안 (준비 단계) ---- */
+// 세트형 항목(회의실 등): name/english 모두 "A / B" 처럼 pairLabels 개수만큼 채워져 있어야 한다
+function checkPair(cat, name, english) {
+  if (!cat.pairLabels) return null;
+  const n = cat.pairLabels.length;
+  const ok = (v) => {
+    const parts = v.split(store.PAIR_SEP).map((x) => x.trim());
+    return parts.length === n && parts.every(Boolean);
+  };
+  if (!ok(name)) return `${cat.pairLabels.join('·')} 이름을 모두 입력하세요.`;
+  if (!ok(english)) return `${cat.pairLabels.join('·')} 영문 표기를 모두 입력하세요.`;
+  return null;
+}
+
 app.post('/api/propose/check', (req, res) => {
   const d = store.getData();
   const chk = checkNumberRange(d, req.body?.voterNumber);
@@ -324,6 +340,8 @@ app.post('/api/propose', (req, res) => {
   if (!name) return res.status(400).json({ error: '이름을 입력하세요.' });
   if (!english) return res.status(400).json({ error: '영문 표기를 입력하세요.' });
   if (!description) return res.status(400).json({ error: '이름에 대한 간단한 설명을 입력하세요.' });
+  const pairErr = checkPair(cat, name, english);
+  if (pairErr) return res.status(400).json({ error: pairErr });
 
   const max = Number(d.config.maxProposalsPerCategory) || 2;
 
@@ -371,6 +389,8 @@ app.put('/api/propose', (req, res) => {
   if (!name) return res.status(400).json({ error: '이름을 입력하세요.' });
   if (!english) return res.status(400).json({ error: '영문 표기를 입력하세요.' });
   if (!description) return res.status(400).json({ error: '이름에 대한 간단한 설명을 입력하세요.' });
+  const pairErr = checkPair(cat, name, english);
+  if (pairErr) return res.status(400).json({ error: pairErr });
 
   let error = null;
   store.mutate((data) => {
@@ -557,7 +577,6 @@ app.put('/api/admin/config', requireAdmin, (req, res) => {
     const c = d.config;
     if (typeof b.title === 'string') c.title = b.title.slice(0, 120);
     if (typeof b.subtitle === 'string') c.subtitle = b.subtitle.slice(0, 200);
-    if (Number.isFinite(b.prize) && b.prize >= 0) c.prize = Math.round(b.prize);
     if (typeof b.useVoterNumbers === 'boolean') c.useVoterNumbers = b.useVoterNumbers;
     if (Number.isFinite(b.expectedVoters) && b.expectedVoters >= 0) {
       c.expectedVoters = Math.min(100000, Math.round(b.expectedVoters));
@@ -578,6 +597,7 @@ app.put('/api/admin/category/:id', requireAdmin, (req, res) => {
     if (typeof b.name === 'string' && b.name.trim()) c.name = b.name.trim().slice(0, 80);
     if (typeof b.description === 'string') c.description = b.description.slice(0, 2000);
     if (Array.isArray(b.examples)) c.examples = b.examples.map((x) => String(x).slice(0, 40)).slice(0, 10);
+    if (Number.isFinite(b.prize) && b.prize >= 0) c.prize = Math.round(b.prize);
   });
   res.json({ ok: true, category: store.getCategory(req.params.id) });
 });
